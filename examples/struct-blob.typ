@@ -1,4 +1,4 @@
-#import "@local/pivot:0.1.0": bytes, struct
+#import "@local/pivot:0.1.0": bytes, palette, struct
 
 #set page(width: auto, height: auto, margin: 8pt)
 #set text(font: "DejaVu Sans Mono")
@@ -9,6 +9,6 @@
 #struct(
   bytes(4)[Magic],
   bytes(2)[Version], bytes(2)[Flags],
-  bytes(512, fill: rgb("#E69F00").lighten(45%))[Encrypted Payload],
+  bytes(512, fill: palette.orange)[Encrypted Payload],
   bytes(4)[CRC32],
 )

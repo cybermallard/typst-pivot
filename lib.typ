@@ -7,3 +7,6 @@
 
 // Named themes. Pass `theme: themes.default + (token: value, ...)` to customise.
 #import "src/theme.typ" as themes
+
+// The shared Okabe–Ito colour-blind-safe highlight palette, for `fill:`.
+#import "src/palette.typ": palette

@@ -39,6 +39,9 @@ with a migration note.
   `read(file, encoding: none)`) or a plain int array; annotations reuse the shared
   `bytes`/`bits` vocabulary. Shares the field model/layout with packet/struct;
   renderer is its own.
+- `palette` — Okabe–Ito colour-blind-friendly highlight palette, exported
+  for use in `fill:` (and the set `hexdump` cycles for auto-colouring). Replaces
+  the inline `rgb(..).lighten()` pattern.
 - Rendered example diagrams under `docs/img/`.
 
 ### Changed

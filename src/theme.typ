@@ -3,6 +3,8 @@
 // (RFC style), which is colour-blind-safe by construction — colour only enters
 // when the author sets an explicit `fill:` on a field.
 
+#import "palette.typ": palette
+
 #let default = (
   bit-width: 0.42cm, // width of one bit column
   row-height: 0.8cm, // height of a field box
@@ -52,23 +54,10 @@
   hexdump-line: 0.5cm, // vertical pitch between dump rows
   hexdump-text-color: black, // hex + ASCII glyphs
   hexdump-offset-color: luma(45%), // the dimmer left offset column
-  // Annotation highlights are intentionally coloured (unlike the line-art
-  // default), so a hex dump distinguishes fields by colour, keyed in the legend.
-  // This is the Okabe–Ito colour-blind-safe qualitative palette, lightened for
-  // legible black text (the same `.lighten()` treatment the example fills use).
-  // An explicit `fill:` overrides; otherwise these cycle. Eight distinct hues —
-  // past that colours repeat; the byte-range column in the legend always
-  // disambiguates regardless.
-  hexdump-palette: (
-    rgb("#E69F00").lighten(45%), // orange
-    rgb("#56B4E9").lighten(45%), // sky blue
-    rgb("#009E73").lighten(45%), // bluish green
-    rgb("#F0E442").lighten(45%), // yellow
-    rgb("#0072B2").lighten(45%), // blue
-    rgb("#D55E00").lighten(45%), // vermillion
-    rgb("#CC79A7").lighten(45%), // reddish purple
-    rgb("#000000").lighten(80%), // grey
-  ),
+  // Auto-cycled field-highlight colours — the shared Okabe–Ito palette
+  // (palette.typ). Eight distinct hues; past that they repeat and the legend's
+  // byte-range column disambiguates. An explicit `fill:` on an annotation wins.
+  hexdump-palette: palette.values(),
   hexdump-legend-gap: 0.5cm, // gap from the dump down to the legend
   hexdump-swatch: 0.3cm, // legend colour-swatch size
   hexdump-legend-rows: 3, // target entries per column (drives the 1->2->3 switch)
