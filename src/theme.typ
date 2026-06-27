@@ -28,6 +28,15 @@
   callout-spacing: 1.7cm, // horizontal spacing between callout labels (gap mode)
   callout-gap: 2.3cm, // enlarged inter-row gap below a row that has callouts
   callout-line-height: 0.5cm, // vertical pitch of stacked callout labels (left mode)
+  callout-col-x: 0.05cm, // left mode: column inset from the frame edge
+  callout-side-gap: 0.35cm, // gap between the fields and a label column (each side)
+  callout-label-pad: 0.08cm, // gap between a leader's end and its label text
+  callout-conn-pad: 0.12cm, // left mode: leader turns just past the label's right edge
+  callout-stub: 0.16cm, // left mode: straight-drop stub for a field above its label
+  callout-gap-drop: 0.45cm, // gap mode: label row offset up from the band bottom
+  callout-gap-lane-top: 0.22cm, // gap mode: topmost leader lane below the row
+  callout-gap-lane-bot: 0.28cm, // gap mode: bottom leader lane above the labels
+  callout-gap-leader: 0.18cm, // gap mode: leader end just above the label
   leader-stroke: 0.4pt + luma(50%), // the leader line
   // struct (vertical memory-map) view
   struct-width: 4cm, // width of a struct field box

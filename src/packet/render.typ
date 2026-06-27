@@ -45,26 +45,39 @@
   let callout-spacing = theme.callout-spacing / 1cm
   let callout-gap = theme.callout-gap / 1cm
   let line-h = theme.callout-line-height / 1cm
+  let col-x = theme.callout-col-x / 1cm
+  let side-gap = theme.callout-side-gap / 1cm
+  let label-gap = theme.callout-label-pad / 1cm
+  let conn-pad = theme.callout-conn-pad / 1cm
+  let stub = theme.callout-stub / 1cm
+  let gap-drop = theme.callout-gap-drop / 1cm
+  let lane-top = theme.callout-gap-lane-top / 1cm
+  let lane-bot = theme.callout-gap-lane-bot / 1cm
+  let gap-leader = theme.callout-gap-leader / 1cm
 
-  // A field is "narrow" (needs a callout) when its label, at label size, won't
-  // fit inside its box. Measured, so it generalises to any label and any width
-  // rather than relying on a tuned bit-count threshold.
-  let is-narrow = s => {
-    if s.kind == "gap" or s.label == none {
-      false
+  // Measure each segment's label once. "narrow" (label wider than its box -> it
+  // needs a callout) and the label width are then O(1) lookups, reused by the
+  // filters, the crowding check, the callout list, and the draw loop below.
+  let meas = (:)
+  for s in segments {
+    let w = if s.kind == "gap" or s.label == none {
+      0.0
     } else {
-      let box-w = (
-        (s.col-end - s.col-start + 1) * bit-w - col-gap - 2 * label-pad
-      )
-      measure(text(size: label-size, s.label)).width / 1cm > box-w
+      measure(text(size: label-size, s.label)).width / 1cm
     }
+    let box-w = (s.col-end - s.col-start + 1) * bit-w - col-gap - 2 * label-pad
+    meas.insert(
+      str(s.row) + "/" + str(s.col-start),
+      (w: w, narrow: s.kind != "gap" and s.label != none and w > box-w),
+    )
   }
+  let is-narrow = s => meas.at(str(s.row) + "/" + str(s.col-start)).narrow
+  let width-of = s => meas.at(str(s.row) + "/" + str(s.col-start)).w
   let callout-rows = segments.filter(is-narrow).map(s => s.row).dedup()
   let max-row = calc.max(0, ..segments.map(s => s.row))
   let count-in = r => segments.filter(s => s.row == r and is-narrow(s)).len()
 
   // A narrow field's horizontal centre (independent of the vertical layout).
-  let col-x = 0.05
   let cx-of = s => (s.col-start + s.col-end + 1) * bit-w / 2
 
   // Per callout row: would the compact left/right split cross a label? It does
@@ -76,10 +89,7 @@
     let info = segments
       .filter(s => s.row == r and is-narrow(s))
       .sorted(key: s => s.col-start)
-      .map(s => (
-        cx: cx-of(s),
-        w: measure(text(size: label-size, s.label)).width / 1cm,
-      ))
+      .map(s => (cx: cx-of(s), w: width-of(s)))
     let left = info.slice(0, calc.ceil(info.len() / 2))
     let cross = false
     for j in range(1, left.len()) {
@@ -156,7 +166,7 @@
         cx: (b.x0 + b.x1) / 2,
         by: b.bot,
         label: s.label,
-        w: measure(text(size: label-size, s.label)).width / 1cm,
+        w: width-of(s),
       )
     })
 
@@ -209,12 +219,12 @@
         // right-aligned just left of the leftmost field, drops stay inside the
         // frame, so a drop can never cut a label; leftmost field on top keeps the
         // orthogonal leaders un-crossed.
-        let gutter = calc.min(..group.map(c => c.cx)) - 0.35
+        let gutter = calc.min(..group.map(c => c.cx)) - side-gap
         for (i, c) in group.enumerate() {
           let y = row-bot - callout-drop - i * line-h
           line((c.cx, c.by), (c.cx, y), (gutter, y), stroke: leader-stroke)
           content(
-            (gutter - 0.08, y),
+            (gutter - label-gap, y),
             text(size: label-size, c.label),
             anchor: "east",
           )
@@ -230,22 +240,22 @@
 
         for (i, c) in left-grp.enumerate() {
           let y = row-bot - callout-drop - i * line-h
-          let conn = col-x + c.w + 0.12
+          let conn = col-x + c.w + conn-pad
           if c.cx >= conn {
             line((c.cx, c.by), (c.cx, y), (conn, y), stroke: leader-stroke)
           } else {
-            line((c.cx, c.by), (c.cx, y + 0.16), stroke: leader-stroke)
+            line((c.cx, c.by), (c.cx, y + stub), stroke: leader-stroke)
           }
           content((col-x, y), text(size: label-size, c.label), anchor: "west")
         }
 
-        let right-x = calc.max(..right-grp.map(c => c.cx)) + 0.35
+        let right-x = calc.max(..right-grp.map(c => c.cx)) + side-gap
         let right-n = right-grp.len()
         for (i, c) in right-grp.enumerate() {
           let y = row-bot - callout-drop - (right-n - 1 - i) * line-h
           line((c.cx, c.by), (c.cx, y), (right-x, y), stroke: leader-stroke)
           content(
-            (right-x + 0.08, y),
+            (right-x + label-gap, y),
             text(size: label-size, c.label),
             anchor: "west",
           )
@@ -262,9 +272,9 @@
             label: c.label,
             lx: start-lx + i * callout-spacing,
           ))
-        let label-y = row-bot - callout-gap + 0.45
-        let lane-hi = row-bot - 0.22
-        let lane-lo = label-y + 0.28
+        let label-y = row-bot - callout-gap + gap-drop
+        let lane-hi = row-bot - lane-top
+        let lane-lo = label-y + lane-bot
         let order = items
           .enumerate()
           .sorted(key: ((j, it)) => -calc.abs(it.lx - centroid))
@@ -275,7 +285,7 @@
             (it.cx, row-bot),
             (it.cx, lane),
             (it.lx, lane),
-            (it.lx, label-y + 0.18),
+            (it.lx, label-y + gap-leader),
             stroke: leader-stroke,
           )
           content(
