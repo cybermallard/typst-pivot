@@ -45,7 +45,7 @@ fetches it (and CeTZ) on first build. There's no manual install step:
 | Diagram | Status |
 |---------|--------|
 | Packet / byte-field | done |
-| Struct / memory map | in progress |
+| Struct / memory map | done |
 | Timelines (horizontal, vertical, snaked) | planned |
 | Diamond Model | planned |
 | Attack tree | planned |
