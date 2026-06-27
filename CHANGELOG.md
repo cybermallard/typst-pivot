@@ -1,51 +1,29 @@
 # Changelog
 
-All notable changes to pivot are documented here. The format follows
-[Keep a Changelog](https://keepachangelog.com/), and the project uses
-[Semantic Versioning](https://semver.org/). Pre-1.0, breaking changes to the
-public API or data contracts may land in a minor release and are announced here
-with a migration note.
+Notable changes to pivot, following
+[Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
+[Semantic Versioning](https://semver.org/). Pre-1.0, a breaking change can land in
+a minor release — each is flagged with a migration note.
 
 ## [Unreleased]
 
-### Added
-- Project foundation: package manifest pinned to `@preview/cetz:0.5.2`
-  (Typst ≥ 0.14.0; toolchain runs Typst 0.14.2 via tytanic), Apache-2.0 licensing,
-  CI, and the version-pin guard.
-- Packet diagram: `packet` with `bytes`/`bits`/`gap`/`reserved` element
-  constructors, `at:`/`fill:` modifiers, auto-flow wrapping, measure-based
-  narrow-field leader callouts (`callout: "left" | "gap"`; a crowded row whose
-  leaders would cross auto-switches to a single outside-the-frame column), a
-  deduplicating bit ruler (`ruler: "dedup"` default, `"full"` numbers every edge),
-  and a theme system
-  (the bit ruler is pinned to an embedded monospace, so it stays mono and aligned
-  under any document label font).
-- Struct diagram: `struct`, the byte-region cluster's vertical memory-map view —
-  fields stacked top-down with box height proportional to byte size (oversized
-  fields capped with a torn break-mark edge), hex byte offsets centred on their
-  boundaries, sizes down the right, reusing the shared
-  `bytes`/`bits`/`gap`/`reserved` vocabulary and `fill:`/gap conventions. Shares
-  the pure field model (`src/field/`) with packet; renderer is its own.
-- Struct bit-field expansion: a byte carved into sub-byte fields renders as one
-  proportional row subdivided into floated, numbered bit-cells (straddle-correct
-  for fields crossing a byte). Names that don't fit a cell become crossing-free
-  leader callouts placed outside the frame. Layer/cell gaps match packet's
-  `row-gap`/`col-gap`.
-- Hexdump diagram: `hexdump`, the byte-region cluster's annotation view — real
-  bytes laid out 16/row with an offset column and ASCII gutter, field annotations
-  highlighted in place (across both the hex cells and the ASCII gutter) and keyed
-  in a colour legend below (byte ranges + names, wrapping into columns of three).
-  `data:` takes Typst `bytes` (e.g.
-  `read(file, encoding: none)`) or a plain int array; annotations reuse the shared
-  `bytes`/`bits` vocabulary. Shares the field model/layout with packet/struct;
-  renderer is its own.
-- `palette` — Okabe–Ito colour-blind-friendly highlight palette, exported
-  for use in `fill:` (and the set `hexdump` cycles for auto-colouring). Replaces
-  the inline `rgb(..).lighten()` pattern.
-- Rendered example diagrams under `docs/img/`.
+## [0.1.0] - 2026-06-27
 
-### Changed
-- `bytes(.., at:)` now anchors in **bytes**, not bits (`bits(.., at:)` still
-  anchors in bits): `at:` reads in each constructor's own unit, which suits the
-  byte-oriented struct/hexdump views. Migration: `bytes(n, at: <bits>)` becomes
-  `bytes(n, at: <bits> / 8)`. (`at:` had no public/example usage before this.)
+First release: the byte-region family — three views over the same bytes, sharing
+one field model so they never disagree on where a field starts.
+
+### Added
+
+- **`packet`** — flat protocol-header view; fields auto-flow and wrap, narrow
+  labels become leader callouts, with a deduplicating bit ruler.
+- **`struct`** — vertical memory map; box height tracks byte size (oversized
+  fields capped with a break mark), hex offsets, sub-byte fields expand in place.
+- **`hexdump`** — real bytes + ASCII gutter, fields highlighted in place with a
+  colour legend; `data:` takes `read(f, encoding: none)` or an int array.
+- Shared elements `bytes` / `bits` / `gap` / `reserved`, with `at:` (byte offset
+  on `bytes`, bit offset on `bits`) and `fill:`.
+- **`palette`** — Okabe–Ito colour-blind-safe highlight colours, for `fill:`.
+- Theming via a `theme:` dict; built on `@preview/cetz:0.5.2` (Typst ≥ 0.14).
+
+[Unreleased]: https://github.com/cybermallard/typst-pivot/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/cybermallard/typst-pivot/releases/tag/v0.1.0
