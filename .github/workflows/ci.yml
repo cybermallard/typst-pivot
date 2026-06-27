@@ -1,0 +1,80 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check version pins are in sync with typst.toml
+        run: bash scripts/check-version-pins.sh
+
+      # Pin Typst to the same version used to generate the visual-regression
+      # references. Bumping this is a deliberate act: regenerate references too,
+      # or the baselines will mismatch.
+      - name: Install Typst
+        uses: typst-community/setup-typst@v4
+        with:
+          typst-version: "0.14.2" # match tytanic's embedded Typst (it renders the references)
+
+      # tytanic (test runner) and typstyle (formatter). cargo install is robust
+      # and the rust-cache keeps it fast after the first run.
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      # Pinned: tytanic and typstyle are part of the pinned toolchain (with Typst,
+      # CeTZ, and fonts). A new typstyle can change formatting and a new tytanic
+      # can change comparison behaviour, either of which would redden CI with no
+      # code change. Bump these deliberately, alongside reference regeneration.
+      - name: Install tytanic and typstyle
+        run: cargo install tytanic@0.3.4 typstyle@0.15.0 --locked
+
+      # Examples and tests import "@local/pivot:0.1.0"; link the checkout into the
+      # Typst local package namespace so those imports resolve. CeTZ is fetched
+      # automatically from @preview (CI has network).
+      - name: Link package into the @local namespace
+        run: |
+          version="$(grep -E '^version' typst.toml | head -1 | sed -E 's/.*"([^"]+)".*/\1/')"
+          dest="${XDG_DATA_HOME:-$HOME/.local/share}/typst/packages/local/pivot/$version"
+          mkdir -p "$(dirname "$dest")"
+          ln -s "$GITHUB_WORKSPACE" "$dest"
+
+      - name: Format check
+        run: typstyle --check src/
+
+      - name: Tests (unit + visual regression)
+        run: tt run   # tytanic's CLI binary is `tt` (even via `cargo install tytanic`)
+
+      - name: Compile every example
+        run: |
+          for f in examples/*.typ; do
+            echo "compiling $f"
+            typst compile --format pdf "$f" /dev/null
+          done
+
+      # The tests above run against the FULL checkout. The registry only receives
+      # the pruned bundle (typst.toml `exclude` applied), and rejects it if it
+      # fails to compile — e.g. lib.typ importing a file that lives in an excluded
+      # dir. Rebuild the pruned bundle and smoke-import it to catch that here.
+      - name: Smoke-test the pruned (published) bundle
+        run: |
+          version="$(grep -E '^version' typst.toml | head -1 | sed -E 's/.*"([^"]+)".*/\1/')"
+          # Read the exclude globs straight from typst.toml so this can't drift.
+          mapfile -t globs < <(sed -n '/^exclude *= *\[/,/^]/p' typst.toml \
+            | grep -oE '"[^"]+"' | tr -d '"')
+          rsync_excl=(--exclude='.git')
+          for g in "${globs[@]}"; do rsync_excl+=(--exclude="$g"); done
+          bundle="$(mktemp -d)/pivot"
+          mkdir -p "$bundle"
+          rsync -a "${rsync_excl[@]}" "$GITHUB_WORKSPACE"/ "$bundle"/
+          # Point @local/pivot at the pruned bundle (replacing the full-tree link).
+          link="${XDG_DATA_HOME:-$HOME/.local/share}/typst/packages/local/pivot/$version"
+          rm -f "$link"
+          ln -s "$bundle" "$link"
+          smoke="$(mktemp -d)/smoke.typ"
+          printf '#import "@local/pivot:%s"\n' "$version" > "$smoke"
+          typst compile --format pdf "$smoke" /dev/null
