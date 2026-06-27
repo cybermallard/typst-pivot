@@ -46,4 +46,32 @@
   struct-offset-gap: 0.25cm, // gap between the offset/size columns and the box
   struct-break-amp: 0.1cm, // break-mark zigzag amplitude (clamped/oversized field)
   struct-break-pitch: 0.26cm, // break-mark zigzag tooth width
+  // hexdump (annotated byte dump) view
+  hexdump-font: "DejaVu Sans Mono", // grid is monospace, pinned like the bit ruler
+  hexdump-size: 11pt, // hex/ASCII text; denser than packet labels, so a bit larger
+  hexdump-line: 0.5cm, // vertical pitch between dump rows
+  hexdump-text-color: black, // hex + ASCII glyphs
+  hexdump-offset-color: luma(45%), // the dimmer left offset column
+  // Annotation highlights are intentionally coloured (unlike the line-art
+  // default), so a hex dump distinguishes fields by colour, keyed in the legend.
+  // This is the Okabe–Ito colour-blind-safe qualitative palette, lightened for
+  // legible black text (the same `.lighten()` treatment the example fills use).
+  // An explicit `fill:` overrides; otherwise these cycle. Eight distinct hues —
+  // past that colours repeat; the byte-range column in the legend always
+  // disambiguates regardless.
+  hexdump-palette: (
+    rgb("#E69F00").lighten(45%), // orange
+    rgb("#56B4E9").lighten(45%), // sky blue
+    rgb("#009E73").lighten(45%), // bluish green
+    rgb("#F0E442").lighten(45%), // yellow
+    rgb("#0072B2").lighten(45%), // blue
+    rgb("#D55E00").lighten(45%), // vermillion
+    rgb("#CC79A7").lighten(45%), // reddish purple
+    rgb("#000000").lighten(80%), // grey
+  ),
+  hexdump-legend-gap: 0.5cm, // gap from the dump down to the legend
+  hexdump-swatch: 0.3cm, // legend colour-swatch size
+  hexdump-legend-rows: 3, // target entries per column (drives the 1->2->3 switch)
+  hexdump-legend-cols: 3, // hard cap on legend columns
+  hexdump-legend-col-gap: 0.7cm, // horizontal gap between legend columns
 )

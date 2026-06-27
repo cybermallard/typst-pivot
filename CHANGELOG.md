@@ -31,4 +31,18 @@ with a migration note.
   for fields crossing a byte). Names that don't fit a cell become crossing-free
   leader callouts placed outside the frame. Layer/cell gaps match packet's
   `row-gap`/`col-gap`.
+- Hexdump diagram: `hexdump`, the byte-region cluster's annotation view — real
+  bytes laid out 16/row with an offset column and ASCII gutter, field annotations
+  highlighted in place (across both the hex cells and the ASCII gutter) and keyed
+  in a colour legend below (byte ranges + names, wrapping into columns of three).
+  `data:` takes Typst `bytes` (e.g.
+  `read(file, encoding: none)`) or a plain int array; annotations reuse the shared
+  `bytes`/`bits` vocabulary. Shares the field model/layout with packet/struct;
+  renderer is its own.
 - Rendered example diagrams under `docs/img/`.
+
+### Changed
+- `bytes(.., at:)` now anchors in **bytes**, not bits (`bits(.., at:)` still
+  anchors in bits): `at:` reads in each constructor's own unit, which suits the
+  byte-oriented struct/hexdump views. Migration: `bytes(n, at: <bits>)` becomes
+  `bytes(n, at: <bits> / 8)`. (`at:` had no public/example usage before this.)

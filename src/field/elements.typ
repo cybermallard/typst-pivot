@@ -2,16 +2,18 @@
 // (packet, struct, hexdump all build from these). Each returns a plain descriptor
 // dict that `model` consumes; the author supplies widths and labels, never bit
 // positions. Pure.
-// `at:` anchors a field to an absolute BIT offset (a `unit:` for byte-oriented
-// offsets is planned for the `struct` sibling; today `at:` is in bits). `fill:`
-// highlights a field. `gap` is a dashed "unparsed" span; `reserved` is a plain
-// empty field (reserved bits). Labels are positional trailing content.
+// `at:` anchors a field to an absolute offset in the constructor's own unit:
+// `bytes(.., at: k)` is byte `k`, `bits(.., at: k)` is bit `k` (the model works
+// in bits, so `bytes` scales its anchor up by 8). This suits byte-oriented views
+// (hexdump/struct) without a separate `unit:`. `fill:` highlights a field. `gap`
+// is a dashed "unparsed" span; `reserved` is a plain empty field (reserved bits).
+// Labels are positional trailing content.
 
 #let bytes(n, label, at: none, fill: none) = (
   kind: "field",
   width: n * 8,
   label: label,
-  anchor: at,
+  anchor: if at == none { none } else { at * 8 },
   fill: fill,
 )
 
