@@ -7,7 +7,7 @@ a minor release — each is flagged with a migration note.
 
 ## [Unreleased]
 
-## [0.1.0] - 2026-06-27
+## [0.1.0] - 2026-06-28
 
 First release: the byte-region family — three views over the same bytes, sharing
 one field model so they never disagree on where a field starts.

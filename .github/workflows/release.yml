@@ -1,0 +1,79 @@
+name: Release to Typst Universe
+
+# When a GitHub Release is published with a tag like `v0.1.0`, this bundles the
+# package and pushes it to a branch on your fork of typst/packages. You then open
+# the PR from the fork to typst/packages by hand (a cross-repo PR needs no token).
+#
+# One-time setup:
+#   1. Fork https://github.com/typst/packages as `<you>/typst-packages`.
+#   2. Create a fine-grained PAT with *Contents: Read and write* on that fork,
+#      and add it as the Actions secret `RELEASE_TOKEN`.
+#   3. Make sure `FORK` below points at your fork.
+#
+# Submission format: packages/preview/<name>/<version>/ holds the package files.
+# See https://github.com/typst/packages and
+# https://jamesrswift.github.io/blog/2024/07/09/packages.html
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read # only reads this repo; the fork push uses RELEASE_TOKEN
+
+env:
+  FORK: cybermallard/typst-packages
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out pivot
+        uses: actions/checkout@v4
+
+      - name: Resolve version, verify it matches the tag
+        id: meta
+        run: |
+          tag="${GITHUB_REF_NAME#v}" # v0.1.0 -> 0.1.0
+          manifest="$(grep -E '^version' typst.toml | sed -E 's/.*"([^"]+)".*/\1/')"
+          if [ "$tag" != "$manifest" ]; then
+            echo "::error::release tag v$tag does not match typst.toml version $manifest"
+            exit 1
+          fi
+          echo "version=$manifest" >> "$GITHUB_OUTPUT"
+
+      - name: Bundle the package (strip repo-only paths)
+        run: |
+          mkdir -p bundle
+          # Keep README / LICENSE / NOTICE; drop VCS, CI, and the same paths as
+          # typst.toml `exclude` (keep this list in sync with the manifest).
+          rsync -a \
+            --exclude='.git' --exclude='.github' \
+            --exclude='tests' --exclude='examples' \
+            --exclude='docs' --exclude='scripts' \
+            --exclude='bundle' \
+            ./ bundle/
+
+      - name: Check out the typst/packages fork
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.FORK }}
+          token: ${{ secrets.RELEASE_TOKEN }}
+          path: registry
+
+      - name: Stage the package and push a branch
+        working-directory: registry
+        run: |
+          v="${{ steps.meta.outputs.version }}"
+          dir="packages/preview/pivot/$v"
+          rm -rf "$dir"
+          mkdir -p "$dir"
+          cp -R ../bundle/. "$dir/"
+          git config user.name "cybermallard"
+          git config user.email "cybermallard@ttp.dev"
+          branch="pivot-$v"
+          git switch -c "$branch"
+          git add "$dir"
+          git commit -m "pivot:$v"
+          git push --force-with-lease -u origin "$branch"
+          echo "::notice::Pushed '$branch' to $FORK. Open a PR into typst/packages adding packages/preview/pivot/$v"
