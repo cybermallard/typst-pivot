@@ -46,7 +46,8 @@
   struct-break-pitch: 0.26cm, // break-mark zigzag tooth width
   // hexdump (annotated byte dump) view
   hexdump-font: "DejaVu Sans Mono", // grid is monospace, pinned like the bit ruler
-  hexdump-size: 11pt, // hex/ASCII text; denser than packet labels, so a bit larger
+  hexdump-size: 10pt, // hex/ASCII grid text (mono)
+  hexdump-legend-size: 9pt, // legend text (mono range + name), smaller than the grid
   hexdump-line: 0.5cm, // vertical pitch between dump rows
   hexdump-text-color: black, // hex + ASCII glyphs
   hexdump-offset-color: luma(45%), // the dimmer left offset column

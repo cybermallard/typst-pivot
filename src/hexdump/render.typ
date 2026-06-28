@@ -56,6 +56,7 @@
 
   let mono = theme.hexdump-font
   let size = theme.hexdump-size
+  let legend-size = theme.hexdump-legend-size
   let line-h = theme.hexdump-line / 1cm
   let off-fill = theme.hexdump-offset-color
   let text-fill = theme.hexdump-text-color
@@ -70,6 +71,13 @@
   // once. `mono-text` is captured before the canvas so `text` stays the builtin.
   let char-w = measure(text(font: mono, size: size, "0")).width / 1cm
   let mono-text = (body, fill) => text(font: mono, size: size, fill: fill, body)
+  // Legend is set a notch smaller than the grid (its own size token).
+  let mono-legend = (body, fill) => text(
+    font: mono,
+    size: legend-size,
+    fill: fill,
+    body,
+  )
 
   // Compact hex byte range for a legend row: "0x00–0x01" (single byte: "0x3C").
   // `range-w` reserves a column so the names line up after the ranges.
@@ -79,12 +87,12 @@
   }
   let range-w = calc.max(
     0,
-    ..legend.map(e => measure(mono-text(range-of(e), off-fill)).width / 1cm),
+    ..legend.map(e => measure(mono-legend(range-of(e), off-fill)).width / 1cm),
   )
   // Widest name, so a wrapped second column starts past the first's labels.
   let label-w = calc.max(
     0,
-    ..legend.map(e => measure(text(size: size, e.label)).width / 1cm),
+    ..legend.map(e => measure(text(size: legend-size, e.label)).width / 1cm),
   )
 
   // Lay the legend into balanced columns, capped at `max-cols` (see layout.typ).
@@ -181,12 +189,12 @@
       }
       content(
         (lx + swatch + label-pad, ly),
-        mono-text(range-of(e), off-fill),
+        mono-legend(range-of(e), off-fill),
         anchor: "west",
       )
       content(
         (lx + label-x, ly),
-        text(size: size, fill: text-fill, e.label),
+        text(size: legend-size, fill: text-fill, e.label),
         anchor: "west",
       )
     }
