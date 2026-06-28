@@ -2,8 +2,8 @@
 
 <p align="center">
   <a href="https://github.com/cybermallard/typst-pivot/actions/workflows/ci.yml"><img src="https://github.com/cybermallard/typst-pivot/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
-  <img src="https://img.shields.io/badge/version-0.1.0-orange.svg" alt="Version 0.1.0 (alpha)">
-  <img src="https://img.shields.io/badge/Typst-0.14%2B-239dad.svg" alt="Typst 0.14+">
+  <a href="https://typst.app/universe/package/pivot"><img src="https://img.shields.io/badge/pivot-v0.1.0-239dad?logo=typst&amp;logoColor=239dad" alt="pivot v0.1.0 on Typst Universe"></a>
+  <img src="https://img.shields.io/badge/Typst-v0.14%2B-239dad.svg" alt="Typst 0.14+">
 </p>
 
 Draw diagrams for Cyber Threat Intelligence (CTI) analysis.
