@@ -6,13 +6,11 @@ authors = ["cybermallard <cybermallard@ttp.dev>"]
 license = "Apache-2.0"
 description = "Cyber Threat Intelligence (CTI) diagrams for Typst"
 
-# Required before publishing to @preview — fill in the real URLs:
-# homepage = "https://github.com/cybermallard/typst-pivot"
-# repository = "https://github.com/cybermallard/typst-pivot"
+homepage = "https://github.com/cybermallard/typst-pivot"
+repository = "https://github.com/cybermallard/typst-pivot"
 
-keywords = ["cti", "security", "packet", "diagram", "cetz"]
+keywords = ["cti", "threat-intelligence", "cybersecurity", "security", "protocol", "packet", "struct", "hexdump"]
 categories = ["visualization"]
-disciplines = ["computer-science"]
 
 # Minimum Typst version. CeTZ 0.5.2 requires >= 0.14.0, and the test runner
 # tytanic 0.3.4 embeds Typst 0.14.2 (it compiles the visual-regression
