@@ -45,11 +45,9 @@
   let callout-spacing = theme.callout-spacing / 1cm
   let callout-gap = theme.callout-gap / 1cm
   let line-h = theme.callout-line-height / 1cm
-  let col-x = theme.callout-col-x / 1cm
+  let stub = theme.callout-stub / 1cm
   let side-gap = theme.callout-side-gap / 1cm
   let label-gap = theme.callout-label-pad / 1cm
-  let conn-pad = theme.callout-conn-pad / 1cm
-  let stub = theme.callout-stub / 1cm
   let gap-drop = theme.callout-gap-drop / 1cm
   let lane-top = theme.callout-gap-lane-top / 1cm
   let lane-bot = theme.callout-gap-lane-bot / 1cm
@@ -80,6 +78,15 @@
   // A narrow field's horizontal centre (independent of the vertical layout).
   let cx-of = s => (s.col-start + s.col-end + 1) * bit-w / 2
 
+  // The compact split's LEFT label column: hug the leftmost field, but clamp so
+  // the widest label can't cross the frame's left edge (x = 0). Shared by the
+  // crowding test and the layout so both reason about the same geometry. `lg` is
+  // a non-empty list of items with `.cx` (field centre) and `.w` (label width).
+  let left-col-x = lg => calc.max(
+    calc.min(..lg.map(c => c.cx)) - side-gap,
+    calc.max(..lg.map(c => c.w)) + label-gap,
+  )
+
   // Per callout row: would the compact left/right split cross a label? It does
   // when a left-column field's drop falls within a higher label's text — i.e. the
   // row is crowded with thin segments. Such rows switch to a single column placed
@@ -91,10 +98,25 @@
       .sorted(key: s => s.col-start)
       .map(s => (cx: cx-of(s), w: width-of(s)))
     let left = info.slice(0, calc.ceil(info.len() / 2))
+    // Predict the compact-split LEFT layout: labels right-aligned at
+    // `lx - label-gap`; a field left of `lx` drops a short straight stub. Such a
+    // stub crosses an earlier label when the field's centre falls within that
+    // label's text span. (A field right of `lx` turns in from beyond every label,
+    // and the right group's labels sit beyond every field, so neither can cross.)
+    // A row that would cross switches to the crowded single-column layout below.
     let cross = false
-    for j in range(1, left.len()) {
-      for i in range(0, j) {
-        if left.at(j).cx <= col-x + left.at(i).w { cross = true }
+    if left.len() >= 2 {
+      let lx = left-col-x(left)
+      let label-right = lx - label-gap
+      for j in range(1, left.len()) {
+        if left.at(j).cx < lx {
+          for i in range(0, j) {
+            if (
+              left.at(j).cx >= label-right - left.at(i).w
+                and left.at(j).cx <= label-right
+            ) { cross = true }
+          }
+        }
       }
     }
     crowded.insert(str(r), cross)
@@ -230,35 +252,53 @@
           )
         }
       } else if callout == "left" {
-        // Compact split into two columns: left half left-aligned near the frame
-        // (leaders turn left to just past each label, or drop straight in for a
-        // field above the column); right half fans right. Lane order keeps the
-        // orthogonal leaders un-crossed. Used when the row would not cross.
+        // Compact split into two columns, each anchored to its OWN fields: the
+        // left half fans left to just past the leftmost field, the right half
+        // fans right past the rightmost — so neither group strands its labels at
+        // the frame edge. Lane order (outermost field on top per side) keeps the
+        // orthogonal leaders un-crossed. Used when the row would not crowd.
         let mid = calc.ceil(n / 2)
         let left-grp = group.slice(0, mid)
         let right-grp = group.slice(mid)
 
+        // Left column (see `left-col-x`): hug the leftmost field, clamped to the
+        // frame edge. A field hard against the edge then gets a straight stub
+        // rather than a leader turning rightward through its own label.
+        let left-x = left-col-x(left-grp)
         for (i, c) in left-grp.enumerate() {
           let y = row-bot - callout-drop - i * line-h
-          let conn = col-x + c.w + conn-pad
-          if c.cx >= conn {
-            line((c.cx, c.by), (c.cx, y), (conn, y), stroke: leader-stroke)
+          // A field to the right of the column turns left onto its label; a field
+          // sitting over its own label (clamped column) gets a short straight
+          // stub instead, so the leader never runs through the text.
+          if c.cx >= left-x {
+            line((c.cx, c.by), (c.cx, y), (left-x, y), stroke: leader-stroke)
           } else {
             line((c.cx, c.by), (c.cx, y + stub), stroke: leader-stroke)
           }
-          content((col-x, y), text(size: label-size, c.label), anchor: "west")
+          content(
+            (left-x - label-gap, y),
+            text(size: label-size, c.label),
+            anchor: "east",
+          )
         }
 
-        let right-x = calc.max(..right-grp.map(c => c.cx)) + side-gap
-        let right-n = right-grp.len()
-        for (i, c) in right-grp.enumerate() {
-          let y = row-bot - callout-drop - (right-n - 1 - i) * line-h
-          line((c.cx, c.by), (c.cx, y), (right-x, y), stroke: leader-stroke)
-          content(
-            (right-x + label-gap, y),
-            text(size: label-size, c.label),
-            anchor: "west",
-          )
+        // Right half — empty when the row has a single narrow field (it falls in
+        // `left-grp`), so guard against `calc.max` of nothing. Unlike the left, it
+        // extends outward unclamped: a long label on a far-right field may spill
+        // past the frame's right edge, the accepted fallback when a label has
+        // nowhere else to go.
+        if right-grp.len() > 0 {
+          let right-x = calc.max(..right-grp.map(c => c.cx)) + side-gap
+          let right-n = right-grp.len()
+          for (i, c) in right-grp.enumerate() {
+            let y = row-bot - callout-drop - (right-n - 1 - i) * line-h
+            line((c.cx, c.by), (c.cx, y), (right-x, y), stroke: leader-stroke)
+            content(
+              (right-x + label-gap, y),
+              text(size: label-size, c.label),
+              anchor: "west",
+            )
+          }
         }
       } else {
         // In-gap fan: orthogonal Z leaders, label row near the band's bottom.
