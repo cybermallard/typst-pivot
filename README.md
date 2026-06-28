@@ -6,7 +6,7 @@
   <img src="https://img.shields.io/badge/Typst-0.14%2B-239dad.svg" alt="Typst 0.14+">
 </p>
 
-Cyber Threat Intelligence (CTI) diagrams for [Typst](https://typst.app). The defaults produce clean and readable diagrams with colour-blind friendly colours.
+Draw diagrams for Cyber Threat Intelligence (CTI) analysis.
 
 <table align="center">
   <tr>
@@ -31,7 +31,7 @@ Cyber Threat Intelligence (CTI) diagrams for [Typst](https://typst.app). The def
 
 ## Installation
 
-pivot is a Typst package — import it from the preview namespace and the compiler
+Import pivot from the preview namespace and the Typst compiler
 fetches it (and CeTZ) on first build. There's no manual install step:
 
 ```typ
@@ -40,7 +40,7 @@ fetches it (and CeTZ) on first build. There's no manual install step:
 
 ## Using pivot
 
-Currently, there are 3 diagrams available; pakcet, struct, and hexdump. They share 
+Currently, there are 3 diagrams available; packet, struct, and hexdump. They share 
 one vocabulary — `bytes(n)`, `bits(n)`, `gap(n)`, `reserved(n)`, with `at:` (offset) 
 and `fill:` (highlight). You describe the entity (widths and labels); pivot derives 
 the offset, row, and ruler number.
@@ -64,7 +64,7 @@ highlighted (the narrow flag bits become leader callouts automatically):
 )
 ```
 
-The same vocabulary as a **`struct`** — a malware C2 beacon header as a memory map:
+**`struct`** — a malware C2 beacon header as a memory map:
 
 ```typ
 #struct(
@@ -75,7 +75,7 @@ The same vocabulary as a **`struct`** — a malware C2 beacon header as a memory
 )
 ```
 
-And **`hexdump`** — a Gh0st RAT C2 check-in, fields annotated in the captured bytes:
+**`hexdump`** — a Gh0st RAT C2 check-in, fields annotated in the captured bytes:
 
 ```typ
 #hexdump(
