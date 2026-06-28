@@ -1,4 +1,4 @@
-#import "@local/pivot:0.1.0": hexdump, bytes
+#import "@local/pivot:0.1.0": hexdump, bytes, palette
 
 #set page(width: auto, height: auto, margin: 0.5cm)
 
@@ -20,8 +20,8 @@
     0x15, 0x0C, 0x2D, 0x0D, 0x4C, 0x4C, 0xB1, 0xE9,
     0x05, 0x00, 0xC9, 0x60, 0x0C, 0xC4,
   ),
-  bytes(5, at: 0x00)[Magic: "Gh0st"],
-  bytes(4, at: 0x05)[Total size (LE)],
-  bytes(4, at: 0x09)[Uncompressed size (LE)],
-  bytes(57, at: 0x0d)[zlib payload (0x78 9C)],
+  bytes(5, at: 0x00, fill: palette.orange)[Magic: "Gh0st"],
+  bytes(4, at: 0x05, fill: palette.sky)[Total size (LE)],
+  bytes(4, at: 0x09, fill: palette.green)[Uncompressed size (LE)],
+  bytes(57, at: 0x0d, fill: palette.yellow)[zlib payload (0x78 9C)],
 )

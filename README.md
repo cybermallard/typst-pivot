@@ -80,10 +80,10 @@ And **`hexdump`** — a Gh0st RAT C2 check-in, fields annotated in the captured 
 ```typ
 #hexdump(
   data: read("ghost-checkin.bin", encoding: none),
-  bytes(5, at: 0x00)[Magic: "Gh0st"],
-  bytes(4, at: 0x05)[Total size (LE)],
-  bytes(4, at: 0x09)[Uncompressed size (LE)],
-  bytes(57, at: 0x0d)[zlib payload (0x78 9C)],
+  bytes(5, at: 0x00, fill: palette.orange)[Magic: "Gh0st"],
+  bytes(4, at: 0x05, fill: palette.sky)[Total size (LE)],
+  bytes(4, at: 0x09, fill: palette.green)[Uncompressed size (LE)],
+  bytes(57, at: 0x0d, fill: palette.yellow)[zlib payload (0x78 9C)],
 )
 ```
 

@@ -1,10 +1,7 @@
 // palette: the shared Okabe–Ito colour-blind-safe qualitative palette, lightened
 // into highlight backgrounds that keep black text legible. One source of truth
-// for field-highlight colour — `hexdump` cycles it for auto-colouring, and
-// packet/struct fields reach for it in an explicit `fill:`. Pure; no cetz.
-//
-// `.values()` gives the cycle order (orange first); reach for a colour by name
-// in a fill, e.g. `fill: palette.orange`.
+// for field-highlight colour across all three diagrams — reach for a colour by
+// name in an explicit `fill:`, e.g. `fill: palette.orange`. Pure; no cetz.
 
 #let palette = (
   orange: rgb("#E69F00").lighten(45%),

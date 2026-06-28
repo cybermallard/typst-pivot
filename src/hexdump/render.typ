@@ -23,16 +23,21 @@
   let rs = rows(data, per: per)
 
   // Annotations -> fields -> per-row segments (a range crossing a row break
-  // splits into one segment per row). Gaps/unlabelled spans aren't highlighted.
+  // splits into one segment per row).
   let fields = model(annotations.pos())
   let segs = layout(fields, bits-per-row: per * 8)
-  let field-segs = segs.filter(s => s.kind == "field" and s.label != none)
+  // In-grid highlighting is opt-in: a field is drawn only when it has a `fill:`.
+  // A hexdump has no per-field box to fall back on (unlike `packet`/`struct`), so
+  // colour is the sole in-grid marker. The fill is honoured whether or not the
+  // field is labelled (the label only names it in the legend); an unfilled field
+  // isn't dropped either — it's still listed in the legend below.
+  let field-segs = segs.filter(s => s.kind == "field" and s.fill != none)
 
-  // One legend entry per distinct field, first-appearance order, carrying its
-  // byte range; an explicit `fill:` wins, otherwise a palette colour is cycled.
-  let palette = theme.hexdump-palette
+  // One legend entry per distinct annotated field, first-appearance order,
+  // carrying its byte range and its `fill:` colour. The colour may be `none`: an
+  // unfilled annotation is still listed (we never drop what the author passed) —
+  // it just gets no swatch here and no in-grid highlight above.
   let legend = ()
-  let auto-i = 0
   for f in fields {
     let is-new = (
       f.kind == "field"
@@ -40,23 +45,14 @@
         and legend.find(e => e.label == f.label) == none
     )
     if is-new {
-      // An explicit `fill:` keeps its colour; the rest cycle the palette. Only
-      // auto-coloured fields advance the cursor, so explicit fills don't shift it.
-      let c = if f.fill != none {
-        f.fill
-      } else {
-        palette.at(calc.rem(auto-i, palette.len()))
-      }
-      if f.fill == none { auto-i += 1 }
       legend.push((
         label: f.label,
-        color: c,
+        color: f.fill,
         lo: int(f.start / 8),
         hi: int(f.end / 8),
       ))
     }
   }
-  let color-of = label => legend.find(e => e.label == label).color
 
   let mono = theme.hexdump-font
   let size = theme.hexdump-size
@@ -123,7 +119,7 @@
       let y = -s.row * line-h
       let a = int(s.col-start / 8)
       let b = int(s.col-end / 8)
-      let col = color-of(s.label)
+      let col = s.fill
       rect(
         (hex-x + hpos(a) * char-w, y - half),
         (hex-x + (hpos(b) + 2) * char-w, y + half),
@@ -173,12 +169,16 @@
       let (ci, ri) = leg-pos.at(k)
       let lx = ci * col-width
       let ly = base-y - ri * line-h
-      rect(
-        (lx, ly - swatch / 2),
-        (lx + swatch, ly + swatch / 2),
-        fill: e.color,
-        stroke: none,
-      )
+      // A swatch only for a filled field; an unfilled one still lists its range
+      // and label, the swatch column left blank so the columns stay aligned.
+      if e.color != none {
+        rect(
+          (lx, ly - swatch / 2),
+          (lx + swatch, ly + swatch / 2),
+          fill: e.color,
+          stroke: none,
+        )
+      }
       content(
         (lx + swatch + label-pad, ly),
         mono-text(range-of(e), off-fill),

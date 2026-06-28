@@ -2,8 +2,10 @@
 
 #set page(width: auto, height: auto, margin: 0.5cm)
 
-// A fuller DOS header walk-through: six annotated fields, so the legend wraps
-// into two columns of three.
+// Selective highlighting: an analyst colours only the fields being called out —
+// the MZ magic and the e_lfanew pointer to the PE header — and leaves the rest
+// annotated-but-plain. An unfilled annotation is never dropped: it stays in the
+// legend by byte range and name, just without a swatch or an in-grid highlight.
 #hexdump(
   data: (
     0x4D, 0x5A, 0x90, 0x00, 0x03, 0x00, 0x00, 0x00,
@@ -16,9 +18,7 @@
     0x00, 0x00, 0x00, 0x00, 0x80, 0x00, 0x00, 0x00,
   ),
   bytes(2, at: 0x00, fill: palette.orange)[DOS magic (MZ)],
-  bytes(2, at: 0x02, fill: palette.sky)[Bytes on last page],
-  bytes(2, at: 0x04, fill: palette.green)[Pages in file],
-  bytes(2, at: 0x06, fill: palette.yellow)[Relocations],
-  bytes(2, at: 0x08, fill: palette.blue)[Header paragraphs],
-  bytes(4, at: 0x3c, fill: palette.vermillion)[e_lfanew -> PE],
+  bytes(2, at: 0x02)[Bytes on last page],
+  bytes(2, at: 0x04)[Pages in file],
+  bytes(4, at: 0x3c, fill: palette.blue)[e_lfanew -> PE],
 )

@@ -1,4 +1,4 @@
-#import "@local/pivot:0.1.0": hexdump, bytes
+#import "@local/pivot:0.1.0": hexdump, bytes, palette
 
 #set page(width: auto, height: auto, margin: 0.5cm)
 
@@ -15,7 +15,7 @@
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
     0x00, 0x00, 0x00, 0x00, 0x80, 0x00, 0x00, 0x00,
   ),
-  bytes(2, at: 0)[DOS magic (MZ)],
-  bytes(2, at: 0x0c)[Relocation count],
-  bytes(4, at: 0x3c)[e_lfanew -> PE],
+  bytes(2, at: 0, fill: palette.orange)[DOS magic (MZ)],
+  bytes(2, at: 0x0c, fill: palette.sky)[Relocation count],
+  bytes(4, at: 0x3c, fill: palette.green)[e_lfanew -> PE],
 )

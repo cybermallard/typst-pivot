@@ -18,8 +18,9 @@ one field model so they never disagree on where a field starts.
   labels become leader callouts, with a deduplicating bit ruler.
 - **`struct`** — vertical memory map; box height tracks byte size (oversized
   fields capped with a break mark), hex offsets, sub-byte fields expand in place.
-- **`hexdump`** — real bytes + ASCII gutter, fields highlighted in place with a
-  colour legend; `data:` takes `read(f, encoding: none)` or an int array.
+- **`hexdump`** — real bytes + ASCII gutter; annotations you `fill:` are
+  highlighted in place, and every annotation is keyed in a byte-range legend.
+  `data:` takes `read(f, encoding: none)` or an int array.
 - Shared elements `bytes` / `bits` / `gap` / `reserved`, with `at:` (byte offset
   on `bytes`, bit offset on `bits`) and `fill:`.
 - **`palette`** — Okabe–Ito colour-blind-safe highlight colours, for `fill:`.
