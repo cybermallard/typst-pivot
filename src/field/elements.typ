@@ -7,20 +7,22 @@
 // in bits, so `bytes` scales its anchor up by 8). This suits byte-oriented views
 // (hexdump/struct) without a separate `unit:`. `fill:` highlights a field. `gap`
 // is a dashed "unparsed" span; `reserved` is a plain empty field (reserved bits).
-// Labels are positional trailing content.
+// Labels are optional positional trailing content (as on `gap`/`reserved`): omit
+// to draw an unnamed field — e.g. `bytes(4, at: 0x10, fill: palette.orange)`
+// highlights a region without a legend row.
 
-#let bytes(n, label, at: none, fill: none) = (
+#let bytes(n, ..rest, at: none, fill: none) = (
   kind: "field",
   width: n * 8,
-  label: label,
+  label: rest.pos().at(0, default: none),
   anchor: if at == none { none } else { at * 8 },
   fill: fill,
 )
 
-#let bits(n, label, at: none, fill: none) = (
+#let bits(n, ..rest, at: none, fill: none) = (
   kind: "field",
   width: n,
-  label: label,
+  label: rest.pos().at(0, default: none),
   anchor: at,
   fill: fill,
 )
