@@ -115,11 +115,50 @@
         } else {
           rect((x0, bot), (x1, top), stroke: box-stroke, fill: box-fill)
         }
+        // Label placement, in order of preference: centred on one line if it
+        // fits; wrapped to at most two lines inside the box if it doesn't; and
+        // only when even two lines won't fit (too long, or too tall for the box)
+        // does it move to a leader callout centred BELOW the box. The callout
+        // label is centred on its leader, so the diagram itself stays centred and
+        // the offset column stays put on the left.
         if e.label != none {
-          content(
-            ((x0 + x1) / 2, (top + bot) / 2),
-            text(size: label-size, e.label),
-          )
+          let cx = (x0 + x1) / 2
+          let mid-y = (top + bot) / 2
+          let avail-w = (x1 - x0) - 2 * label-pad
+          let nat-w = measure(text(size: label-size, e.label)).width / 1cm
+          if nat-w <= avail-w {
+            content((cx, mid-y), text(size: label-size, e.label))
+          } else {
+            // wrap to the box width and see if it lands within two lines and the
+            // box height; a reference two-line block sets the line-count ceiling.
+            // Disable justification: a wrapped label must not inherit the
+            // document's `par(justify: true)`, which would stretch a line with
+            // few break points into huge inter-word gaps.
+            let wrapped = box(width: avail-w * 1cm, {
+              set par(justify: false)
+              align(center, text(size: label-size, e.label))
+            })
+            let wh = measure(wrapped).height / 1cm
+            let two-line = (
+              measure(box(
+                width: avail-w * 1cm,
+                text(size: label-size)[A\ A],
+              )).height
+                / 1cm
+            )
+            let avail-h = (top - bot) - 2 * label-pad
+            if wh <= two-line + 0.01 and wh <= avail-h {
+              content((cx, mid-y), wrapped)
+            } else {
+              // too long even for two lines: drop a leader and hang the same
+              // wrapped block (centred, box width) below the box, so the callout
+              // stays contained and centred rather than sprawling as one line.
+              let ly = bot - callout-drop
+              line((cx, bot), (cx, ly), stroke: leader-stroke)
+              content((cx, ly), wrapped, anchor: "north")
+              extra += callout-drop + wh + callout-bottom
+            }
+          }
         }
       } else {
         // a bit-carved byte-run: one strip subdivided horizontally into cells.
