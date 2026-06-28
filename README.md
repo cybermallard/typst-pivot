@@ -40,10 +40,12 @@ fetches it (and CeTZ) on first build. There's no manual install step:
 
 ## Using pivot
 
-One vocabulary drives all three views — `bytes(n)`, `bits(n)`, `gap(n)`,
-`reserved(n)`, with `at:` (offset) and `fill:` (highlight). You write widths and
-labels; pivot derives every offset, row, and ruler number. The gallery diagrams
-above are built from calls like these:
+Currently, there are 3 diagrams available; pakcet, struct, and hexdump. They share 
+one vocabulary — `bytes(n)`, `bits(n)`, `gap(n)`, `reserved(n)`, with `at:` (offset) 
+and `fill:` (highlight). You describe the entity (widths and labels); pivot derives 
+the offset, row, and ruler number.
+
+The gallery diagrams above are built from calls like these:
 
 A **`packet`** — the TCP header, with the sequence and acknowledgment numbers
 highlighted (the narrow flag bits become leader callouts automatically):
@@ -114,6 +116,20 @@ _Alphabetical order, i.e., not the order in which they will be released._
 | Pyramid of Pain | Indicator types ranked by adversary cost. |
 | Sequence | A time-ordered view of interactions between parties. |
 | Timelines | Events on an ordered axis — horizontal, vertical, or snaked. |
+
+## Accessibility
+
+Readability is the default. Pivot exposes `palette.[colour]` allowing you to use the 8-colour [Okabe–Ito](https://jfly.uni-koeln.de/color/) colour-blind-safe
+palette:
+
+![pivot's colour-blind-safe palette](https://raw.githubusercontent.com/cybermallard/typst-pivot/main/docs/img/palette.png)
+
+The rest of the defaults stay legible and adjustable:
+
+- **Inherits the document font.** Field labels use your document's font. The bit ruler 
+  and hexdump grid pin to the bundled monospace (DejaVu Sans Mono) to keep columns aligned.
+- **Sizes are theme tokens.** `label-size`, `bit-size`, and `hexdump-size` scale
+  up for legibility, e.g. `theme: themes.default + (label-size: 12pt)`.
 
 ## Documentation
 
