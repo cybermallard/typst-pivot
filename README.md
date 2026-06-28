@@ -40,18 +40,50 @@ fetches it (and CeTZ) on first build. There's no manual install step:
 
 ## Using pivot
 
+One vocabulary drives all three views — `bytes(n)`, `bits(n)`, `gap(n)`,
+`reserved(n)`, with `at:` (offset) and `fill:` (highlight). You write widths and
+labels; pivot derives every offset, row, and ruler number. The gallery diagrams
+above are built from calls like these:
+
+A **`packet`** — the TCP header, with the sequence and acknowledgment numbers
+highlighted (the narrow flag bits become leader callouts automatically):
+
 ```typ
-#import "@preview/pivot:0.1.0": packet, bytes
+#import "@preview/pivot:0.1.0": packet, struct, hexdump, bytes, bits, gap, palette
 
 #packet(
   bytes(2)[Source Port], bytes(2)[Destination Port],
-  bytes(4)[Sequence Number],
-  bytes(4)[Acknowledgment Number],
+  bytes(4, fill: palette.blue)[Sequence Number],
+  bytes(4, fill: palette.blue)[Acknowledgment Number],
+  bits(4)[Data Offset], bits(6)[Reserved],
+  bits(1)[URG], bits(1)[ACK], bits(1)[PSH], bits(1)[RST], bits(1)[SYN], bits(1)[FIN],
+  bytes(2)[Window],
+  bytes(2)[Checksum], bytes(2)[Urgent Pointer],
 )
 ```
 
-Fields are built from `bytes(n)` / `bits(n)`; pivot derives the positions and the
-ruler.
+The same vocabulary as a **`struct`** — a malware C2 beacon header as a memory map:
+
+```typ
+#struct(
+  bytes(4)[Magic],
+  bytes(1)[Version], bytes(1)[Command], bytes(2)[Bot ID],
+  bytes(4, fill: palette.orange)[Campaign Key],
+  gap(16)[unparsed], bytes(2)[Payload Len],
+)
+```
+
+And **`hexdump`** — a Gh0st RAT C2 check-in, fields annotated in the captured bytes:
+
+```typ
+#hexdump(
+  data: read("ghost-checkin.bin", encoding: none),
+  bytes(5, at: 0x00)[Magic: "Gh0st"],
+  bytes(4, at: 0x05)[Total size (LE)],
+  bytes(4, at: 0x09)[Uncompressed size (LE)],
+  bytes(57, at: 0x0d)[zlib payload (0x78 9C)],
+)
+```
 
 
 ## Diagrams
