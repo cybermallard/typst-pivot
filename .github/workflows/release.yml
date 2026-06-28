@@ -53,6 +53,11 @@ jobs:
             --exclude='docs' --exclude='scripts' \
             --exclude='bundle' \
             ./ bundle/
+          # Pin the README's repo URLs (gallery images, examples link) to this
+          # version's tag, so the published package always references resources
+          # that match it; the repo's own README keeps `main` (always latest).
+          v="${{ steps.meta.outputs.version }}"
+          sed -E -i "s#(cybermallard/typst-pivot/(tree/)?)main/#\1v${v}/#g" bundle/README.md
 
       - name: Check out the typst/packages fork
         uses: actions/checkout@v4

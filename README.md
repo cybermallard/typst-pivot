@@ -1,7 +1,7 @@
 # pivot
 
 <p align="center">
-  <a href="https://github.com/cybermallard/typst-pivot/actions/workflows/ci.yml"><img src="https://github.com/cybermallard/typst-pivot/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://github.com/cybermallard/typst-pivot/actions/workflows/ci.yml"><img src="https://github.com/cybermallard/typst-pivot/actions/workflows/ci.yml/badge.svg" alt="CI build status"></a>
   <a href="https://typst.app/universe/package/pivot"><img src="https://img.shields.io/badge/pivot-v0.1.0-239dad?logo=typst&amp;logoColor=239dad" alt="pivot v0.1.0 on Typst Universe"></a>
   <img src="https://img.shields.io/badge/Typst-v0.14%2B-239dad.svg" alt="Typst 0.14+">
 </p>
@@ -133,8 +133,9 @@ The rest of the defaults stay legible and adjustable:
 
 ## Documentation
 
-Full docs are in progress. For now, [`examples/`](examples) has a runnable example
-for every diagram.
+Full docs are in progress. For now,
+[`examples/`](https://github.com/cybermallard/typst-pivot/tree/main/examples) has a
+runnable example for every diagram.
 
 ### Adding a caption to a diagram
 

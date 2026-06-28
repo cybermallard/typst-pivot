@@ -4,9 +4,8 @@ version = "0.1.0"
 entrypoint = "lib.typ"
 authors = ["cybermallard <cybermallard@ttp.dev>"]
 license = "Apache-2.0"
-description = "Cyber Threat Intelligence (CTI) diagrams for Typst"
+description = "Draw diagrams for Cyber Threat Intelligence (CTI) analysis."
 
-homepage = "https://github.com/cybermallard/typst-pivot"
 repository = "https://github.com/cybermallard/typst-pivot"
 
 keywords = ["cti", "threat-intelligence", "cybersecurity", "security", "protocol", "packet", "struct", "hexdump"]
