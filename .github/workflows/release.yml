@@ -80,5 +80,8 @@ jobs:
           git switch -c "$branch"
           git add "$dir"
           git commit -m "pivot:$v"
-          git push --force-with-lease -u origin "$branch"
+          # Plain force: this branch is generated solely by this workflow on our
+          # own fork, and the fresh shallow checkout has no lease to compare, so
+          # --force-with-lease fails "stale info" on a re-run. Overwrite outright.
+          git push --force -u origin "$branch"
           echo "::notice::Pushed '$branch' to $FORK. Open a PR into typst/packages adding packages/preview/pivot/$v"
