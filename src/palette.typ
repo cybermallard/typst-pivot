@@ -1,7 +1,8 @@
 // palette: the shared Okabe–Ito colour-blind-safe qualitative palette, lightened
 // into highlight backgrounds that keep black text legible. One source of truth
 // for field-highlight colour across all three diagrams — reach for a colour by
-// name in an explicit `fill:`, e.g. `fill: palette.orange`. Pure; no cetz.
+// name in an explicit `fill:`, e.g. `fill: palette.orange`. Timeline markers fill
+// with these and rim them with a darker shade of the same hue (see render). Pure.
 
 #let palette = (
   orange: rgb("#E69F00").lighten(45%),

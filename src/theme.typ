@@ -58,4 +58,24 @@
   hexdump-legend-rows: 3, // target entries per column (drives the 1->2->3 switch)
   hexdump-legend-cols: 3, // hard cap on legend columns
   hexdump-legend-col-gap: 0.7cm, // horizontal gap between legend columns
+
+  // timeline view (events on an axis)
+  timeline-margin: 0.5cm, // breathing room above and below the whole diagram
+  timeline-axis-stroke: 0.6pt + luma(40%), // the axis rule and the stems
+  timeline-pitch: 3.4cm, // spacing between consecutive events along the axis
+  timeline-row-height: 4.2cm, // snaked: vertical pitch between wrapped rows
+  timeline-turn-bulge: 3cm, // snaked: how far the U-bend curves out (control offset)
+  timeline-edge-nudge: 0.1cm, // snaked: optical inset for a marker flush at an edge
+  timeline-marker-size: 0.17cm, // marker radius
+  timeline-marker-edge-width: 0.9pt, // marker rim / outline weight
+  timeline-marker-edge-darken: 40%, // filled marker: rim = the fill darkened by this (>=3:1)
+  timeline-marker-outline: luma(30%), // unfilled (default) marker: a hollow outline
+  timeline-stem: 0.35cm, // gap from the marker out to its label
+  timeline-text-width: 2.9cm, // wrap width of the time/title/description block
+  timeline-text-gap: 0.1cm, // gap between the stem end and the label text
+  timeline-time-size: 9pt, // the time/date line (matches the title size)
+  timeline-title-size: 9pt, // the event title
+  timeline-desc-size: 8pt, // the description
+  timeline-time-color: luma(35%), // dimmer time/date (7:1 on white, AA)
+  timeline-text-color: black, // title + description
 )

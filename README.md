@@ -25,9 +25,15 @@ Draw diagrams for Cyber Threat Intelligence (CTI) analysis.
       <sub><b>hexdump</b> · annotated bytes</sub>
     </td>
   </tr>
+  <tr>
+    <td colspan="2" align="center" valign="top">
+      <img src="https://raw.githubusercontent.com/cybermallard/typst-pivot/main/docs/img/timeline-snaked.png" width="100%" alt="timeline: an intrusion reconstructed on a snaked axis"><br>
+      <sub><b>timeline</b> · events on an axis</sub>
+    </td>
+  </tr>
 </table>
 
-<p align="center"><sub><i>a TCP header (narrow flags fan out as leader callouts), a malware C2 config as a memory map, and a Gh0st RAT check-in annotated in a hexdump.</i></sub></p>
+<p align="center"><sub><i>a TCP header (narrow flags fan out as leader callouts), a malware C2 config as a memory map, a Gh0st RAT check-in annotated in a hexdump, and an intrusion reconstructed on a snaked timeline.</i></sub></p>
 
 ## Installation
 
@@ -40,10 +46,11 @@ fetches it (and CeTZ) on first build. There's no manual install step:
 
 ## Using pivot
 
-Currently, there are 3 diagrams available; packet, struct, and hexdump. They share 
-one vocabulary — `bytes(n)`, `bits(n)`, `gap(n)`, `reserved(n)`, with `at:` (offset) 
-and `fill:` (highlight). You describe the entity (widths and labels); pivot derives 
-the offset, row, and ruler number.
+Currently, there are four diagrams. Three — packet, struct, and hexdump — are
+byte-region views sharing one vocabulary: `bytes(n)`, `bits(n)`, `gap(n)`,
+`reserved(n)`, with `at:` (offset) and `fill:` (highlight). You describe the entity
+(widths and labels); pivot derives the offset, row, and ruler number. The fourth,
+`timeline`, plots `event(...)`s on an ordered axis — horizontal, vertical, or snaked.
 
 The gallery diagrams above are built from calls like these:
 
@@ -87,6 +94,25 @@ highlighted (the narrow flag bits become leader callouts automatically):
 )
 ```
 
+A **`timeline`** — a ransomware intrusion on a snaked axis. In this example shape *and* colour mark
+a simplified attack-lifecycle, so each reads as a block of matching markers improving comprehension.
+Colour customisable but unfilled by default:
+
+```typ
+#import "@preview/pivot:0.1.0": timeline, event, palette
+
+#timeline(
+  orientation: "snaked",
+  wrap: 4,
+  event(time: "Day 1", fill: palette.blue, description: [Staff harvested via OSINT.])[Reconnaissance],
+  event(time: "Day 2", shape: "square", fill: palette.purple, description: [Macro doc to 8 staff.])[Phishing email],
+  event(time: "Day 2", shape: "triangle", fill: palette.green, description: [Cobalt Strike beacon.])[C2 established],
+  event(time: "Day 3", shape: "triangle", fill: palette.green, description: [LSASS via Mimikatz.])[Credential access],
+  event(time: "Day 7", shape: "diamond", fill: palette.vermillion, description: [12 GB to MEGA.])[Exfiltration],
+  event(time: "Day 8", shape: "diamond", fill: palette.vermillion, description: [LockBit detonation.])[Impact],
+)
+```
+
 
 ## Diagrams
 
@@ -97,9 +123,11 @@ highlighted (the narrow flag bits become leader callouts automatically):
 | **`packet`** | Flat protocol-header view — fields wrap into rows under a bit ruler; narrow labels become leader callouts. |
 | **`struct`** | Vertical memory map — box height tracks byte size, hex offsets down the side, sub-byte fields expand in place. |
 | **`hexdump`** | Real bytes with an ASCII gutter, fields highlighted in place and keyed in a colour legend. |
+| **`timeline`** | Events on an ordered axis — horizontal, vertical, or a snaked layout that wraps long runs into curved rows. A marker's shape and colour can be customised. |
 
-All three share one field vocabulary (`bytes` / `bits` / `gap` / `reserved`) over
-the same model, so views of the same bytes can't disagree.
+The first three share one field vocabulary (`bytes` / `bits` / `gap` / `reserved`)
+over the same model, so views of the same bytes can't disagree. `timeline` is its
+own family, built from `event(...)`s.
 
 **Diagram Roadmap**
 
@@ -115,7 +143,6 @@ _Alphabetical order, i.e., not the order in which they will be released._
 | Knowledge graph | Typed entities as nodes joined by labelled edges. |
 | Pyramid of Pain | Indicator types ranked by adversary cost. |
 | Sequence | A time-ordered view of interactions between parties. |
-| Timelines | Events on an ordered axis — horizontal, vertical, or snaked. |
 
 ## Accessibility
 

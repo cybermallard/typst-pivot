@@ -7,6 +7,14 @@ a minor release — each is flagged with a migration note.
 
 ## [Unreleased]
 
+### Added
+
+- **`timeline`** — events on an ordered axis, in three orientations: horizontal,
+  vertical, and a snaked layout that wraps long runs into curved U-bends. Built 
+  from `event(title, time:, description:, shape:, fill:)`; a sparse event is a 
+  title only. A marker takes a shape (circle / square / triangle / diamond) and 
+  `fill:`.
+
 ## [0.1.0] - 2026-06-28
 
 First release: the byte-region family — three views over the same bytes, sharing
