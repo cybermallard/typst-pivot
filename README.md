@@ -11,24 +11,22 @@ Draw diagrams for Cyber Threat Intelligence (CTI) analysis.
 <table align="center">
   <tr>
     <td align="center" valign="top">
-      <img src="https://raw.githubusercontent.com/cybermallard/typst-pivot/main/docs/img/tcp-header.png" height="260" alt="packet: a TCP header, narrow flags as leader callouts"><br>
+      <img src="https://raw.githubusercontent.com/cybermallard/typst-pivot/main/docs/img/tcp-header.png" height="210" alt="packet: a TCP header, narrow flags as leader callouts"><br>
       <sub><b>packet</b> · protocol header</sub>
     </td>
     <td align="center" valign="top">
-      <img src="https://raw.githubusercontent.com/cybermallard/typst-pivot/main/docs/img/struct-malware-c2.png" height="260" alt="struct: a malware C2 config as a memory map"><br>
+      <img src="https://raw.githubusercontent.com/cybermallard/typst-pivot/main/docs/img/timeline-snaked.png" height="210" alt="timeline: an intrusion reconstructed on a snaked axis"><br>
+      <sub><b>timeline</b> · events on an axis</sub>
+    </td>
+    <td align="center" valign="top">
+      <img src="https://raw.githubusercontent.com/cybermallard/typst-pivot/main/docs/img/struct-malware-c2.png" height="210" alt="struct: a malware C2 config as a memory map"><br>
       <sub><b>struct</b> · memory map</sub>
     </td>
   </tr>
   <tr>
-    <td colspan="2" align="center" valign="top">
+    <td colspan="3" align="center" valign="top">
       <img src="https://raw.githubusercontent.com/cybermallard/typst-pivot/main/docs/img/hexdump-gh0st.png" width="100%" alt="hexdump: a Gh0st RAT C2 header annotated"><br>
       <sub><b>hexdump</b> · annotated bytes</sub>
-    </td>
-  </tr>
-  <tr>
-    <td colspan="2" align="center" valign="top">
-      <img src="https://raw.githubusercontent.com/cybermallard/typst-pivot/main/docs/img/timeline-snaked.png" width="100%" alt="timeline: an intrusion reconstructed on a snaked axis"><br>
-      <sub><b>timeline</b> · events on an axis</sub>
     </td>
   </tr>
 </table>
