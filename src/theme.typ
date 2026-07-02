@@ -78,4 +78,28 @@
   timeline-desc-size: 8pt, // the description
   timeline-time-color: luma(35%), // dimmer time/date (7:1 on white, AA)
   timeline-text-color: black, // title + description
+
+  // flowchart (nodes joined by directed edges)
+  flowchart-node-pad-x: 0.45cm, // horizontal padding around a node label
+  flowchart-node-pad-y: 0.3cm, // vertical padding around a node label
+  flowchart-node-min-width: 1.5cm, // floor width so small labels still read as boxes
+  flowchart-node-gap: 0.7cm, // horizontal gap between nodes sharing a rank
+  flowchart-rank-gap: 1.3cm, // vertical gap between ranks (layers)
+  flowchart-back-margin: 0.6cm, // gap from the diagram to a long/back edge's side channel
+  flowchart-back-gap: 0.45cm, // spacing between stacked back-edge channels
+  flowchart-node-edge-width: 0.9pt, // node border weight
+  flowchart-node-edge-darken: 40%, // filled node: border = the fill darkened by this
+  flowchart-node-outline: luma(25%), // unfilled node: border colour
+  flowchart-node-fill: none, // node fill (opt-in per node via fill:)
+  flowchart-label-size: 9.5pt, // node label text
+  flowchart-label-color: black, // node label
+  flowchart-decision-scale: 1.9, // a diamond grows this much around its label
+  flowchart-io-slant: 0.35cm, // parallelogram lean (io nodes)
+  flowchart-edge-width: 0.9pt, // edge line weight
+  flowchart-edge-color: luma(40%), // edge line + arrowhead
+  flowchart-arrow-scale: 1.4, // arrowhead size
+  flowchart-edge-label-size: 8.5pt, // branch-label text on an edge
+  flowchart-edge-label-color: luma(30%), // branch label
+  flowchart-edge-label-fill: white, // knockout behind a branch label, so it reads over the line
+  flowchart-edge-label-inset: (x: 3pt, y: 1pt), // padding inside that knockout
 )

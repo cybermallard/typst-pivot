@@ -9,6 +9,10 @@ a minor release — each is flagged with a migration note.
 
 ### Added
 
+- **`flowchart`** — nodes joined by directed edges, auto-laid-out in either vertical or
+   horizontal (`direction: "horizontal"`). Built from `node(id, label, shape:, fill:)` 
+   (shapes: rounded / rectangle / diamond / parallelogram) and `edge(from, to, label:)`. 
+   Node colour is opt-in via `fill:`.
 - **`timeline`** — events on an ordered axis, in three orientations: horizontal,
   vertical, and a snaked layout that wraps long runs into curved U-bends. Built 
   from `event(title, time:, description:, shape:, fill:)`; a sparse event is a 
