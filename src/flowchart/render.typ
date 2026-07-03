@@ -49,7 +49,7 @@
   let elabel-inset = theme.flowchart-edge-label-inset
 
   // Measure each label and give the node a box per shape (a diamond grows to hold
-  // the label, a rounded box becomes a stadium, a parallelogram leans off vertical).
+  // the label, a rounded rectangle rounds its corners, a parallelogram leans off vertical).
   let sized = g.cells.map(c => {
     let lbl = text(size: label-size, fill: label-color, c.label)
     let m = measure(lbl)
@@ -75,8 +75,8 @@
       }
       if direction == "horizontal" { (bh, bw) } else { (bw, bh) }
     }
-    // `th` is the label-height thickness — the rounded box's stadium radius, so a merge
-    // target that grows keeps flat faces (rounded corners, not a bulging capsule).
+    // `th` is the label-height thickness — the rounded rectangle's corner radius, so a
+    // merge target that grows keeps flat faces (rounded corners, not a bulging capsule).
     (..c, lbl: lbl, w: w, h: h, th: ih)
   })
   let wof = (:)

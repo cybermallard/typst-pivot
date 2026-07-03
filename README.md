@@ -8,30 +8,7 @@
 
 Draw diagrams for Cyber Threat Intelligence (CTI) analysis.
 
-<table align="center">
-  <tr>
-    <td align="center" valign="top">
-      <img src="https://raw.githubusercontent.com/cybermallard/typst-pivot/main/docs/img/tcp-header.png" height="210" alt="packet: a TCP header, narrow flags as leader callouts"><br>
-      <sub><b>packet</b> · protocol header</sub>
-    </td>
-    <td align="center" valign="top">
-      <img src="https://raw.githubusercontent.com/cybermallard/typst-pivot/main/docs/img/timeline-snaked.png" height="210" alt="timeline: an intrusion reconstructed on a snaked axis"><br>
-      <sub><b>timeline</b> · events on an axis</sub>
-    </td>
-    <td align="center" valign="top">
-      <img src="https://raw.githubusercontent.com/cybermallard/typst-pivot/main/docs/img/struct-malware-c2.png" height="210" alt="struct: a malware C2 config as a memory map"><br>
-      <sub><b>struct</b> · memory map</sub>
-    </td>
-  </tr>
-  <tr>
-    <td colspan="3" align="center" valign="top">
-      <img src="https://raw.githubusercontent.com/cybermallard/typst-pivot/main/docs/img/hexdump-gh0st.png" width="100%" alt="hexdump: a Gh0st RAT C2 header annotated"><br>
-      <sub><b>hexdump</b> · annotated bytes</sub>
-    </td>
-  </tr>
-</table>
-
-<p align="center"><sub><i>a TCP header (narrow flags fan out as leader callouts), a malware C2 config as a memory map, a Gh0st RAT check-in annotated in a hexdump, and an intrusion reconstructed on a snaked timeline.</i></sub></p>
+![The five diagram families: a TCP header packet diagram, a malware-triage flowchart, a Gh0st RAT check-in annotated in a hexdump, a malware C2 config as a memory map, and a ransomware intrusion on a snaked timeline.](https://raw.githubusercontent.com/cybermallard/typst-pivot/main/docs/img/hero.png)
 
 ## Installation
 
@@ -44,11 +21,13 @@ fetches it (and CeTZ) on first build. There's no manual install step:
 
 ## Using pivot
 
-Currently, there are four diagrams. Three — packet, struct, and hexdump — are
+Currently, there are five diagrams. Three — packet, struct, and hexdump — are
 byte-region views sharing one vocabulary: `bytes(n)`, `bits(n)`, `gap(n)`,
 `reserved(n)`, with `at:` (offset) and `fill:` (highlight). You describe the entity
-(widths and labels); pivot derives the offset, row, and ruler number. The fourth,
-`timeline`, plots `event(...)`s on an ordered axis — horizontal, vertical, or snaked.
+(widths and labels); pivot derives the offset, row, and ruler number. The other two
+stand alone: `timeline` plots `event(...)`s on an ordered axis — horizontal, vertical,
+or snaked — and `flowchart` draws `node(...)`s joined by `edge(...)`s, laid out
+automatically top-to-bottom or left-to-right.
 
 The gallery diagrams above are built from calls like these:
 
@@ -111,6 +90,30 @@ Colour customisable but unfilled by default:
 )
 ```
 
+A **`flowchart`** — a malware-triage flow, its outcome actions coloured (red for the
+malicious-path actions, green for benign). Node shape marks the role, and pivot ranks,
+aligns, and routes it:
+
+```typ
+#import "@preview/pivot:0.1.0": flowchart, node, edge, palette
+
+#flowchart(
+  node("in", [Suspicious file], shape: "rounded"),
+  node("hash", [Known-bad hash?], shape: "diamond"),
+  node("block", [Block & alert], fill: palette.vermillion),
+  node("det", [Detonate in sandbox], shape: "parallelogram"),
+  node("mal", [Malicious behaviour?], shape: "diamond"),
+  node("ir", [Raise incident], fill: palette.vermillion),
+  node("clear", [Mark benign], fill: palette.green),
+  node("out", [Report], shape: "rounded"),
+  edge("in", "hash"),
+  edge("hash", "block", label: [yes]), edge("hash", "det", label: [no]),
+  edge("det", "mal"),
+  edge("mal", "ir", label: [yes]), edge("mal", "clear", label: [no]),
+  edge("ir", "out"), edge("clear", "out"), edge("block", "out"),
+)
+```
+
 
 ## Diagrams
 
@@ -122,10 +125,12 @@ Colour customisable but unfilled by default:
 | **`struct`** | Vertical memory map — box height tracks byte size, hex offsets down the side, sub-byte fields expand in place. |
 | **`hexdump`** | Real bytes with an ASCII gutter, fields highlighted in place and keyed in a colour legend. |
 | **`timeline`** | Events on an ordered axis — horizontal, vertical, or a snaked layout that wraps long runs into curved rows. A marker's shape and colour can be customised. |
+| **`flowchart`** | Nodes joined by directed edges, auto-laid-out top-to-bottom or left-to-right. Shape can denote a node's role (rounded / rectangle / diamond / parallelogram). |
 
 The first three share one field vocabulary (`bytes` / `bits` / `gap` / `reserved`)
-over the same model, so views of the same bytes can't disagree. `timeline` is its
-own family, built from `event(...)`s.
+over the same model, so views of the same bytes can't disagree. `timeline` and
+`flowchart` are their own families, built from `event(...)`s and
+`node(...)` / `edge(...)`s.
 
 **Diagram Roadmap**
 
@@ -137,7 +142,6 @@ _Alphabetical order, i.e., not the order in which they will be released._
 | Attack tree | A hierarchical representation of paths an adversary could take to achieve a goal. |
 | Bowtie | A event at the center, threats on the left, consequences on the right, annotated with preventive and mitigating barriers. |
 | Diamond Model | The four vertices: adversary, capability, infrastructure, victim. |
-| Flowchart | A step-by-step view of a process and its decision points.|
 | Knowledge graph | Typed entities as nodes joined by labelled edges. |
 | Pyramid of Pain | Indicator types ranked by adversary cost. |
 | Sequence | A time-ordered view of interactions between parties. |
