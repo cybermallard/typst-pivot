@@ -19,6 +19,11 @@
   wrap: 5,
   theme: theme-mod.default,
 ) = context {
+  assert(
+    orientation in ("horizontal", "vertical", "snaked"),
+    message: "timeline: orientation must be \"horizontal\", \"vertical\", or \"snaked\", got "
+      + repr(orientation),
+  )
   let evs = layout(model(events.pos()))
 
   // Capture tokens before `import cetz.draw: *` shadows names like `line`/`fill`.
