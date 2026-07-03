@@ -1,7 +1,7 @@
 // Multiple long edges into one merge: `scan` and `enrich` both reach `report`
 // across more than one rank. Each drops down its own source column, so the merge
 // widens to seat both entries side by side without them colliding.
-#import "@local/pivot:0.1.0": edge, flowchart, node
+#import "@local/pivot:0.2.0": edge, flowchart, node
 
 #set page(width: auto, height: auto, margin: 0.5cm)
 

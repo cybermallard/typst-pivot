@@ -5,7 +5,7 @@ Notable changes to pivot, following
 [Semantic Versioning](https://semver.org/). Pre-1.0, a breaking change can land in
 a minor release — each is flagged with a migration note.
 
-## [Unreleased]
+## [0.2.0] - 2026-07-03
 
 ### Added
 

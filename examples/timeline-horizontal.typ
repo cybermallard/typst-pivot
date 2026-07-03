@@ -1,4 +1,4 @@
-#import "@local/pivot:0.1.0": timeline, event, palette
+#import "@local/pivot:0.2.0": timeline, event, palette
 
 #set page(width: auto, height: auto, margin: 0.5cm)
 

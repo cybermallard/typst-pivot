@@ -1,4 +1,4 @@
-#import "@local/pivot:0.1.0": bytes, packet
+#import "@local/pivot:0.2.0": bytes, packet
 
 #set page(width: auto, height: auto, margin: 6pt)
 #set text(font: "DejaVu Sans Mono")

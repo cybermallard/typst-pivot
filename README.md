@@ -2,7 +2,7 @@
 
 <p align="center">
   <a href="https://github.com/cybermallard/typst-pivot/actions/workflows/ci.yml"><img src="https://github.com/cybermallard/typst-pivot/actions/workflows/ci.yml/badge.svg" alt="CI build status"></a>
-  <a href="https://typst.app/universe/package/pivot"><img src="https://img.shields.io/badge/pivot-v0.1.0-239dad?logo=typst&amp;logoColor=239dad" alt="pivot v0.1.0 on Typst Universe"></a>
+  <a href="https://typst.app/universe/package/pivot"><img src="https://img.shields.io/badge/pivot-v0.2.0-239dad?logo=typst&amp;logoColor=239dad" alt="pivot v0.2.0 on Typst Universe"></a>
   <img src="https://img.shields.io/badge/Typst-v0.14%2B-239dad.svg" alt="Typst 0.14+">
 </p>
 
@@ -16,7 +16,7 @@ Import pivot from the preview namespace and the Typst compiler
 fetches it (and CeTZ) on first build. There's no manual install step:
 
 ```typ
-#import "@preview/pivot:0.1.0": packet, struct, hexdump
+#import "@preview/pivot:0.2.0": packet, struct, hexdump
 ```
 
 ## Using pivot
@@ -35,7 +35,7 @@ A **`packet`** — the TCP header, with the sequence and acknowledgment numbers
 highlighted (the narrow flag bits become leader callouts automatically):
 
 ```typ
-#import "@preview/pivot:0.1.0": packet, struct, hexdump, bytes, bits, gap, palette
+#import "@preview/pivot:0.2.0": packet, struct, hexdump, bytes, bits, gap, palette
 
 #packet(
   bytes(2)[Source Port], bytes(2)[Destination Port],
@@ -76,7 +76,7 @@ a simplified attack-lifecycle, so each reads as a block of matching markers impr
 Colour customisable but unfilled by default:
 
 ```typ
-#import "@preview/pivot:0.1.0": timeline, event, palette
+#import "@preview/pivot:0.2.0": timeline, event, palette
 
 #timeline(
   orientation: "snaked",
@@ -95,7 +95,7 @@ malicious-path actions, green for benign). Node shape marks the role, and pivot 
 aligns, and routes it:
 
 ```typ
-#import "@preview/pivot:0.1.0": flowchart, node, edge, palette
+#import "@preview/pivot:0.2.0": flowchart, node, edge, palette
 
 #flowchart(
   node("in", [Suspicious file], shape: "rounded"),

@@ -1,4 +1,4 @@
-#import "@local/pivot:0.1.0": flowchart, node, edge
+#import "@local/pivot:0.2.0": flowchart, node, edge
 
 #set page(width: auto, height: auto, margin: 0.5cm)
 

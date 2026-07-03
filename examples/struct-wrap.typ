@@ -1,4 +1,4 @@
-#import "@local/pivot:0.1.0": struct, bytes, palette
+#import "@local/pivot:0.2.0": struct, bytes, palette
 
 #set page(width: auto, height: auto, margin: 0.5cm)
 

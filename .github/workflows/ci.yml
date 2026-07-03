@@ -33,7 +33,7 @@ jobs:
       - name: Install tytanic and typstyle
         run: cargo install tytanic@0.3.4 typstyle@0.15.0 --locked
 
-      # Examples and tests import "@local/pivot:0.1.0"; link the checkout into the
+      # Examples and tests import "@local/pivot:0.2.0"; link the checkout into the
       # Typst local package namespace so those imports resolve. CeTZ is fetched
       # automatically from @preview (CI has network).
       - name: Link package into the @local namespace
