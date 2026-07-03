@@ -70,6 +70,7 @@
   timeline-marker-edge-width: 0.9pt, // marker rim / outline weight
   timeline-marker-edge-darken: 40%, // filled marker: rim = the fill darkened by this (>=3:1)
   timeline-marker-outline: luma(30%), // unfilled (default) marker: a hollow outline
+  timeline-marker-fill: white, // hollow marker interior: knocks out the axis behind it (not transparent)
   timeline-stem: 0.35cm, // gap from the marker out to its label
   timeline-text-width: 2.9cm, // wrap width of the time/title/description block
   timeline-text-gap: 0.1cm, // gap between the stem end and the label text

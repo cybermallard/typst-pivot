@@ -40,6 +40,7 @@
   let text-w = theme.timeline-text-width / 1cm
   let text-gap = theme.timeline-text-gap / 1cm
   let marker-outline = theme.timeline-marker-outline
+  let marker-fill = theme.timeline-marker-fill
   let time-size = theme.timeline-time-size
   let title-size = theme.timeline-title-size
   let desc-size = theme.timeline-desc-size
@@ -92,10 +93,13 @@
             e.fill
           }
       )
+      // A hollow marker's interior is opaque, not transparent, so it knocks out the
+      // axis line passing beneath it rather than letting it strike through.
+      let mfill = if e.fill == none { marker-fill } else { e.fill }
       if e.shape == "circle" {
-        circle((x, y), radius: m, fill: e.fill, stroke: edge)
+        circle((x, y), radius: m, fill: mfill, stroke: edge)
       } else if e.shape == "square" {
-        rect((x - m, y - m), (x + m, y + m), fill: e.fill, stroke: edge)
+        rect((x - m, y - m), (x + m, y + m), fill: mfill, stroke: edge)
       } else if e.shape == "diamond" {
         line(
           (x, y + m),
@@ -103,7 +107,7 @@
           (x, y - m),
           (x - m, y),
           close: true,
-          fill: e.fill,
+          fill: mfill,
           stroke: edge,
         )
       } else if e.shape == "triangle" {
@@ -112,7 +116,7 @@
           (x + m, y - m),
           (x - m, y - m),
           close: true,
-          fill: e.fill,
+          fill: mfill,
           stroke: edge,
         )
       }
