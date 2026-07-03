@@ -8,7 +8,7 @@ description = "Draw diagrams for Cyber Threat Intelligence (CTI) analysis."
 
 repository = "https://github.com/cybermallard/typst-pivot"
 
-keywords = ["cti", "threat-intelligence", "cybersecurity", "security", "protocol", "packet", "struct", "hexdump"]
+keywords = ["cti", "threat-intelligence", "cybersecurity", "security", "protocol", "packet", "struct", "hexdump", "timeline", "flowchart"]
 categories = ["visualization"]
 
 # Minimum Typst version. CeTZ 0.5.2 requires >= 0.14.0, and the test runner
