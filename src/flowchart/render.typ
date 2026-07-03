@@ -8,17 +8,17 @@
 // neighbours (a straight spine), then route: a direct (one-rank) edge runs straight
 // into a single-input target or fans into a shared one; a long or back edge takes a
 // side channel clear of the body. The engine works in a canonical vertical (top to
-// bottom) flow; `direction: "horizontal"` is the same picture transposed at the draw
+// bottom) flow; `orientation: "horizontal"` is the same picture transposed at the draw
 // step. Node colour is opt-in (`fill:`). Returns content.
 #let flowchart(
   ..items,
-  direction: "vertical",
+  orientation: "vertical",
   theme: theme-mod.default,
 ) = context {
   assert(
-    direction in ("vertical", "horizontal"),
-    message: "flowchart: direction must be \"vertical\" or \"horizontal\", got "
-      + repr(direction),
+    orientation in ("vertical", "horizontal"),
+    message: "flowchart: orientation must be \"vertical\" or \"horizontal\", got "
+      + repr(orientation),
   )
   let g = layout(model(items.pos()))
   // An empty diagram has no nodes to place and no extent to measure — draw nothing.
@@ -57,12 +57,12 @@
     let ih = m.height / 1cm + 2 * pad-y
     // The router works in a canonical (cross, flow) space: `w` is the cross-axis
     // extent (growable by a merge), `h` the flow-axis extent. Most shapes are a plain
-    // box that just swaps axes with the flow direction; the parallelogram is
+    // box that just swaps axes with the flow orientation; the parallelogram is
     // special — its slant always runs along the cross axis (so its flow-entry/exit
     // faces stay flat and edges attach flush), so the slant room is reserved in
     // whichever extent is the cross one.
     let (w, h) = if c.shape == "parallelogram" {
-      if direction == "horizontal" { (ih + io-slant, iw) } else {
+      if orientation == "horizontal" { (ih + io-slant, iw) } else {
         (iw + io-slant, ih)
       }
     } else {
@@ -73,7 +73,7 @@
       } else {
         (iw, ih)
       }
-      if direction == "horizontal" { (bh, bw) } else { (bw, bh) }
+      if orientation == "horizontal" { (bh, bw) } else { (bw, bh) }
     }
     // `th` is the label-height thickness — the rounded rectangle's corner radius, so a
     // merge target that grows keeps flat faces (rounded corners, not a bulging capsule).
@@ -361,7 +361,9 @@
     // flow is that picture transposed. `map` sends a canonical point to the canvas
     // (identity for a vertical flow), and is applied to every drawn coordinate — so
     // lines and boxes rotate but text, placed at `map(centre)`, stays upright.
-    let map = if direction == "horizontal" { p => (-p.at(1), -p.at(0)) } else {
+    let map = if orientation == "horizontal" {
+      p => (-p.at(1), -p.at(0))
+    } else {
       p => p
     }
 
@@ -486,7 +488,7 @@
       if e.kind == "direct" {
         let forks = fanout.at(str(e.from), default: 0) >= 2
         let pts = if (
-          direction == "horizontal" and s.shape == "diamond" and forks
+          orientation == "horizontal" and s.shape == "diamond" and forks
         ) {
           // A horizontal-flow decision that forks leaves through its cross faces (the
           // diamond's top and bottom points, in the final picture): out the vertex on

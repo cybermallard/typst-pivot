@@ -2,11 +2,11 @@
 
 #set page(width: auto, height: auto, margin: 0.5cm)
 
-// A left-to-right alert-enrichment pipeline (`direction: "horizontal"`). The flow reads as
+// A left-to-right alert-enrichment pipeline (`orientation: "horizontal"`). The flow reads as
 // a line: dedup, enrich, decide, then the two dispositions merge back into one notify
 // step — which widens across the flow (here, vertically) to seat both inputs.
 #flowchart(
-  direction: "horizontal",
+  orientation: "horizontal",
   node("in", [Alert], shape: "rounded"),
   node("dedup", [Deduplicate]),
   node("enrich", [Enrich with TI], shape: "parallelogram"),

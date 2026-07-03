@@ -2,13 +2,13 @@
 
 #set page(width: auto, height: auto, margin: 0.5cm)
 
-// A left-to-right alert-escalation loop (`direction: "horizontal"`). It exercises the
+// A left-to-right alert-escalation loop (`orientation: "horizontal"`). It exercises the
 // routing that a rightward flow transposes: a decision that forks (yes/no leave the
 // diamond's top and bottom points), a decision with a single onward path (flows
 // straight through), and a back edge — the loop from "More alerts?" climbs into a
 // channel above the body and drops back into "Triage".
 #flowchart(
-  direction: "horizontal",
+  orientation: "horizontal",
   node("start", [Alert raised], shape: "rounded"),
   node("triage", [Triage]),
   node("sev", [Severity > high?], shape: "diamond"),
