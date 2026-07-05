@@ -88,7 +88,7 @@
   flowchart-rank-gap: 1.3cm, // vertical gap between ranks (layers)
   flowchart-back-margin: 0.6cm, // gap from the diagram to a long/back edge's side channel
   flowchart-back-gap: 0.45cm, // spacing between stacked back-edge channels
-  flowchart-node-edge-width: 0.9pt, // node border weight
+  flowchart-node-edge-width: 1.1pt, // node border weight (matches timeline marker rim)
   flowchart-node-edge-darken: 40%, // filled node: border = the fill darkened by this
   flowchart-node-outline: luma(25%), // unfilled node: border colour
   flowchart-node-fill: none, // node fill (opt-in per node via fill:)
