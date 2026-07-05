@@ -61,13 +61,13 @@
 
   // timeline view (events on an axis)
   timeline-margin: 0.5cm, // breathing room above and below the whole diagram
-  timeline-axis-stroke: 0.6pt + luma(40%), // the axis rule and the stems
+  timeline-axis-stroke: 1.1pt + luma(40%), // the axis rule and the stems
   timeline-pitch: 3.4cm, // spacing between consecutive events along the axis
   timeline-row-height: 4.2cm, // snaked: vertical pitch between wrapped rows
   timeline-turn-bulge: 3cm, // snaked: how far the U-bend curves out (control offset)
   timeline-edge-nudge: 0.1cm, // snaked: optical inset for a marker flush at an edge
-  timeline-marker-size: 0.17cm, // marker radius
-  timeline-marker-edge-width: 0.9pt, // marker rim / outline weight
+  timeline-marker-size: 0.22cm, // marker radius
+  timeline-marker-edge-width: 1.1pt, // marker rim / outline weight
   timeline-marker-edge-darken: 40%, // filled marker: rim = the fill darkened by this (>=3:1)
   timeline-marker-outline: luma(30%), // unfilled (default) marker: a hollow outline
   timeline-marker-fill: white, // hollow marker interior: knocks out the axis behind it (not transparent)
