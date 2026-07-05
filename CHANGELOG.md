@@ -5,18 +5,18 @@ Notable changes to pivot, following
 [Semantic Versioning](https://semver.org/). Pre-1.0, a breaking change can land in
 a minor release — each is flagged with a migration note.
 
-## [0.2.0] - 2026-07-03
+## [0.2.0] - 2026-07-05
 
 ### Added
 
 - **`flowchart`** — nodes joined by directed edges, auto-laid-out in either vertical or
-   horizontal (`orientation: "horizontal"`). Built from `node(id, label, shape:, fill:)` 
-   (shapes: rounded / rectangle / diamond / parallelogram) and `edge(from, to, label:)`. 
-   Node colour is opt-in via `fill:`.
+  horizontal (`orientation: "horizontal"`). Built from `node(id, label, shape:, fill:)`
+  (shapes: rounded / rectangle / diamond / parallelogram) and `edge(from, to, label:)`.
+  Node colour is opt-in via `fill:`.
 - **`timeline`** — events on an ordered axis, in three orientations: horizontal,
-  vertical, and a snaked layout that wraps long runs into curved U-bends. Built 
-  from `event(title, time:, description:, shape:, fill:)`; a sparse event is a 
-  title only. A marker takes a shape (circle / square / triangle / diamond) and 
+  vertical, and a snaked layout that wraps long runs into curved U-bends. Built
+  from `event(title, time:, description:, shape:, fill:)`; a sparse event is a
+  title only. A marker takes a shape (circle / square / triangle / diamond) and
   `fill:`.
 
 ## [0.1.0] - 2026-06-28
@@ -38,5 +38,6 @@ one field model so they never disagree on where a field starts.
 - **`palette`** — Okabe–Ito colour-blind-safe highlight colours, for `fill:`.
 - Theming via a `theme:` dict; built on `@preview/cetz:0.5.2` (Typst ≥ 0.14).
 
-[Unreleased]: https://github.com/cybermallard/typst-pivot/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/cybermallard/typst-pivot/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/cybermallard/typst-pivot/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/cybermallard/typst-pivot/releases/tag/v0.1.0
