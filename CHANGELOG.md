@@ -5,6 +5,15 @@ Notable changes to pivot, following
 [Semantic Versioning](https://semver.org/). Pre-1.0, a breaking change can land in
 a minor release — each is flagged with a migration note.
 
+## [Unreleased]
+
+### Fixed
+
+- `flowchart`: an edge's arrow could land in the space around a node's rounded corner 
+  or slanted edge instead of its outline — a node where arrows converge coming out too narrow,
+  or an arrow using the bounding box rather than the shape. Node widths are now computed reliably 
+  and every edge meets the shape on its outline.
+
 ## [0.2.0] - 2026-07-05
 
 ### Added
