@@ -3,7 +3,7 @@
 // each edge references declared nodes, and names the offender on bad input.
 // Returns (nodes, edges, ids) — `ids` maps a node id to its position in `nodes`.
 
-#let shapes = ("rounded", "rectangle", "diamond", "parallelogram")
+#let shapes = ("rounded", "rectangle", "diamond", "parallelogram", "cylinder")
 
 #let model(items) = {
   let nodes = ()

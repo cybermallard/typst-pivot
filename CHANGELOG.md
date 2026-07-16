@@ -7,6 +7,11 @@ a minor release — each is flagged with a migration note.
 
 ## [Unreleased]
 
+### Added
+
+- `flowchart`: a `"cylinder"` node shape — useful to visualise a feed, 
+  database, or log store. It stays upright in both orientations.
+
 ### Fixed
 
 - `flowchart`: an edge's arrow could land in the space around a node's rounded corner 

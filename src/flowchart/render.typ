@@ -42,6 +42,7 @@
   let label-color = theme.flowchart-label-color
   let dscale = theme.flowchart-decision-scale
   let io-slant = theme.flowchart-io-slant / 1cm
+  let cyl-cap = theme.flowchart-cylinder-cap / 1cm
   let edge-stroke = theme.flowchart-edge-width + theme.flowchart-edge-color
   let line-w = theme.flowchart-edge-width / 1cm // sag tolerance for edge landings
   let arrow-fill = theme.flowchart-edge-color
@@ -67,6 +68,14 @@
     let (w, h) = if c.shape == "parallelogram" {
       if orientation == "horizontal" { (ih + io-slant, iw) } else {
         (iw + io-slant, ih)
+      }
+    } else if c.shape == "cylinder" {
+      // A cylinder stands upright whatever the flow, so its cap room always
+      // rides the final vertical extent: the flow extent in a vertical flow,
+      // the cross extent in a horizontal one. Four cap heights: two for the
+      // silhouette's caps, two so the front rim dips only to the label's top.
+      if orientation == "horizontal" { (ih + 4 * cyl-cap, iw) } else {
+        (iw, ih + 4 * cyl-cap)
       }
     } else {
       let (bw, bh) = if c.shape == "diamond" {
@@ -179,6 +188,44 @@
           fill: fc,
           stroke: edge,
         )
+      } else if p.shape == "cylinder" {
+        // A datastore stands upright whatever the flow, so it is drawn around
+        // the mapped centre with unswapped extents — putting it through `map`
+        // would lay it on its side. Silhouette first (sides + back of the top
+        // rim + front of the bottom), then the front rim over the fill.
+        let (fx, fy) = map((x, y))
+        let (fw, fh) = if orientation == "horizontal" { (h, w) } else {
+          (w, h)
+        }
+        let fa = fw / 2
+        let ytop = fy + fh / 2 - cyl-cap // top rim ellipse centre
+        let ybot = fy - fh / 2 + cyl-cap // bottom rim ellipse centre
+        merge-path(close: true, fill: fc, stroke: edge, {
+          line((fx - fa, ybot), (fx - fa, ytop))
+          arc(
+            (fx - fa, ytop),
+            start: 180deg,
+            stop: 0deg,
+            radius: (fa, cyl-cap),
+            anchor: "arc-start",
+          )
+          line((fx + fa, ytop), (fx + fa, ybot))
+          arc(
+            (fx + fa, ybot),
+            start: 0deg,
+            stop: -180deg,
+            radius: (fa, cyl-cap),
+            anchor: "arc-start",
+          )
+        })
+        arc(
+          (fx - fa, ytop),
+          start: 180deg,
+          stop: 360deg,
+          radius: (fa, cyl-cap),
+          anchor: "arc-start",
+          stroke: edge,
+        )
       } else {
         rect(
           map((x - w / 2, y - h / 2)),
@@ -187,7 +234,13 @@
           stroke: edge,
         )
       }
-      content(map((x, y)), p.lbl)
+      // The label sits at the node's centre — except in a cylinder, where the
+      // visible body runs from the front rim down, so centre the label there.
+      let lc = map((x, y))
+      if p.shape == "cylinder" {
+        lc = (lc.at(0), lc.at(1) - cyl-cap / 2)
+      }
+      content(lc, p.lbl)
     }
 
     // A point on a node's outline (top/bottom), nudged `toward` a target x — a
@@ -216,6 +269,23 @@
           dx = calc.max(dx, calc.min(-a + io-slant, 0))
         } else {
           dx = calc.min(dx, calc.max(a - io-slant, 0))
+        }
+      } else if p.shape == "cylinder" {
+        // Upright whatever the flow. Vertical flow lands on the cap's arc:
+        // allow a landing while the arc has sagged less than a line width
+        // (sag ≈ cap·dx²/2a²). Horizontal flow lands on the straight side
+        // between the caps, with the same slack past its ends.
+        if orientation == "horizontal" {
+          let flat = (
+            calc.max(a - cyl-cap, 0)
+              + calc.min(calc.sqrt(2 * cyl-cap * line-w), cyl-cap)
+          )
+          dx = calc.max(calc.min(dx, flat), -flat)
+        } else {
+          let allow = if cyl-cap <= line-w { a } else {
+            calc.min(a * calc.sqrt(2 * line-w / cyl-cap), a)
+          }
+          dx = calc.max(calc.min(dx, allow), -allow)
         }
       }
       let ey = if p.shape == "diamond" {

@@ -96,6 +96,7 @@
   flowchart-label-color: black, // node label
   flowchart-decision-scale: 1.9, // a diamond grows this much around its label
   flowchart-io-slant: 0.35cm, // parallelogram lean (io nodes)
+  flowchart-cylinder-cap: 0.16cm, // cylinder cap semi-height; the body grows, the cap never does
   flowchart-edge-width: 0.9pt, // edge line weight
   flowchart-edge-color: luma(40%), // edge line + arrowhead
   flowchart-arrow-scale: 1.4, // arrowhead size
