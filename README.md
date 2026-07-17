@@ -114,6 +114,25 @@ aligns, and routes it:
 )
 ```
 
+### Automatic layout, with a nudge when you want one
+
+The point of `flowchart` is that pivot does the layout: you write nodes and
+edges — never coordinates — and it ranks, aligns, spaces, and routes them for
+you. On a dense diagram the automatic placement can occasionally drop a label
+somewhere tight. When it does, move that one label with `label-offset` and
+pivot keeps doing everything else:
+
+```typ
+// page units — +y is up, +x is right, the same in either orientation
+edge("hash", "block", label: [yes], label-offset: (0pt, 6pt))
+```
+
+Only that label shifts; every node, edge, and other label stays exactly where
+pivot placed it — and the label still reserves its new spot, so nothing else
+lands on top of it. It's a finishing touch, not a layout tool: for a whole
+crowded region, give the diagram more room with `flowchart-lane-gap` instead
+and let pivot re-solve the lot.
+
 
 ## Diagrams
 
