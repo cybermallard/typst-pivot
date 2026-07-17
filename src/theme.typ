@@ -88,6 +88,12 @@
   flowchart-rank-gap: 1.3cm, // vertical gap between ranks (layers)
   flowchart-back-margin: 0.6cm, // gap from the diagram to a long/back edge's side channel
   flowchart-back-gap: 0.45cm, // spacing between stacked back-edge channels
+  flowchart-max-reach: 6cm, // how far any input may pull a node's face out; a further one bends into a seat instead
+  flowchart-widen-skew: 0.7cm, // how lopsided that pull may be: a node reaches past its inputs on one side at most this much further than on the other, so a shoved-off-centre node stays label-sized and the arrows bend to it
+  flowchart-edge-clearance: 0.45cm, // minimum distance between a routed edge and any node it passes
+  flowchart-lane-gap: 0.45cm, // spacing between parallel edge lanes (corridors and fanned approach tails)
+  flowchart-stub: 0.6cm, // minimum straight run at an edge's final drop into its seat — must comfortably exceed the arrowhead (~0.25cm at the default arrow-scale) so a bend never sits inside the head
+  flowchart-margin-step: 0.35cm, // automatic breathing room: packing clearance a node gains per edge beyond its second
   flowchart-node-edge-width: 1.1pt, // node border weight (matches timeline marker rim)
   flowchart-node-edge-darken: 40%, // filled node: border = the fill darkened by this
   flowchart-node-outline: luma(25%), // unfilled node: border colour

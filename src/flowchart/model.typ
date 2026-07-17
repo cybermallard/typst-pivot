@@ -44,7 +44,26 @@
         it.to in ids,
         message: "flowchart: edge references unknown node " + repr(it.to),
       )
-      edges.push((from: it.from, to: it.to, label: it.label))
+      let lo = it.at("label-offset", default: none)
+      assert(
+        lo == none
+          or (
+            type(lo) == array
+              and lo.len() == 2
+              and lo.all(v => type(v) == length)
+          ),
+        message: "flowchart: edge "
+          + repr(it.from)
+          + " -> "
+          + repr(it.to)
+          + ": label-offset must be an (x, y) pair of lengths",
+      )
+      edges.push((
+        from: it.from,
+        to: it.to,
+        label: it.label,
+        label-offset: lo,
+      ))
     }
   }
   (nodes: nodes, edges: edges, ids: ids)

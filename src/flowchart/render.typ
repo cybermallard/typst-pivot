@@ -2,7 +2,7 @@
 #import "../theme.typ" as theme-mod
 #import "model.typ": model
 #import "layout.typ": layout
-#import "place.typ": place
+#import "place.typ": label-spots, place
 
 // flowchart: nodes joined by directed edges, laid out in ranked layers. `layout`
 // fixes each node's rank and order; `place` (pure) turns measured sizes into
@@ -34,6 +34,12 @@
   let rank-gap = theme.flowchart-rank-gap / 1cm
   let back-margin = theme.flowchart-back-margin / 1cm
   let back-gap = theme.flowchart-back-gap / 1cm
+  let max-reach = theme.flowchart-max-reach / 1cm
+  let widen-skew = theme.flowchart-widen-skew / 1cm
+  let edge-clearance = theme.flowchart-edge-clearance / 1cm
+  let lane-gap = theme.flowchart-lane-gap / 1cm
+  let stub = theme.flowchart-stub / 1cm
+  let margin-step = theme.flowchart-margin-step / 1cm
   let edge-width = theme.flowchart-node-edge-width
   let edge-darken = theme.flowchart-node-edge-darken
   let node-outline = theme.flowchart-node-outline
@@ -102,6 +108,12 @@
     rank-gap: rank-gap,
     pad-x: pad-x,
     back-margin: back-margin,
+    max-reach: max-reach,
+    widen-skew: widen-skew,
+    edge-clearance: edge-clearance,
+    lane-gap: lane-gap,
+    stub: stub,
+    margin-step: margin-step,
   )
 
   // Final node geometry for the canvas: placement plus each node's label and style.
@@ -121,6 +133,7 @@
   }
   let fanout = placed.fanout
   let route = placed.route
+  let dseat = placed.dseat
 
   cetz.canvas({
     import cetz.draw: *
@@ -271,60 +284,99 @@
           dx = calc.min(dx, calc.max(a - io-slant, 0))
         }
       } else if p.shape == "cylinder" {
-        // Upright whatever the flow. Vertical flow lands on the cap's arc:
-        // allow a landing while the arc has sagged less than a line width
-        // (sag ≈ cap·dx²/2a²). Horizontal flow lands on the straight side
-        // between the caps, with the same slack past its ends.
+        // Upright whatever the flow. Horizontal flow lands on the straight
+        // side between the caps, with slack past its ends while the cap has
+        // curved away by less than a line width (sag ≈ cap·dx²/2a²). Vertical
+        // flow may land anywhere on the cap — `ey` below drops the landing
+        // onto the arc itself. (Clamping to the arc's near-flat middle
+        // instead collapsed spaced seats onto one point on a wide datastore,
+        // doubling their arrowheads.)
         if orientation == "horizontal" {
           let flat = (
             calc.max(a - cyl-cap, 0)
               + calc.min(calc.sqrt(2 * cyl-cap * line-w), cyl-cap)
           )
           dx = calc.max(calc.min(dx, flat), -flat)
-        } else {
-          let allow = if cyl-cap <= line-w { a } else {
-            calc.min(a * calc.sqrt(2 * line-w / cyl-cap), a)
-          }
-          dx = calc.max(calc.min(dx, allow), -allow)
         }
       }
       let ey = if p.shape == "diamond" {
         let rise = b * (1 - calc.abs(dx) / a)
         if top { p.y + rise } else { p.y - rise }
+      } else if p.shape == "cylinder" and orientation != "horizontal" {
+        // The cap: a half-ellipse, semi-axes (a, cyl-cap), centred on the rim
+        // a cap-height inside the bounding box.
+        let sag = (
+          cyl-cap * (1 - calc.sqrt(calc.max(1 - (dx / a) * (dx / a), 0)))
+        )
+        if top { p.y + b - sag } else { p.y - b + sag }
       } else if top { p.y + b } else { p.y - b }
       (p.x + dx, ey)
     }
-    // Place a branch label on the midpoint of the path's longest vertical run. A
-    // label reads cleanly sitting on a vertical line (like the yes/no branches), but
-    // its knockout box breaks up a short horizontal stub and looks like a gap in the
-    // line. Fall back to the longest segment only if the path has no vertical run.
-    let edge-label = (lbl, pts) => {
-      let anchor = none
-      let best = -1
-      for i in range(pts.len() - 1) {
-        let (ax, ay) = pts.at(i)
-        let (bx, by) = pts.at(i + 1)
-        let vertical = calc.abs(ax - bx) < straight-eps
-        let score = (
-          calc.abs(ay - by)
-            + calc.abs(ax - bx)
-            + if vertical { 1000 } else { 0 }
-        )
-        if score > best {
-          best = score
-          anchor = ((ax + bx) / 2, (ay + by) / 2)
-        }
-      }
-      if anchor != none {
-        content(
-          map(anchor),
-          box(
-            fill: elabel-fill,
-            inset: elabel-inset,
-            text(size: elabel-size, fill: elabel-color, lbl),
-          ),
-        )
-      }
+    // A branch label prefers the midpoint of its path's longest vertical run —
+    // a label reads cleanly sitting on a vertical line, while its knockout box
+    // breaks up a short horizontal stub and looks like a gap. Labels are only
+    // *collected* here (with their segments in preference order, mapped to
+    // final space); after every edge is drawn, `label-spots` places them all at
+    // once so they dodge each other and the nodes, and their knockouts sit over
+    // every line already on the canvas.
+    let labelled = ()
+    let label-item = (lbl, pts) => {
+      let segs = range(pts.len() - 1)
+        .map(i => {
+          let (ax, ay) = pts.at(i)
+          let (bx, by) = pts.at(i + 1)
+          let vertical = calc.abs(ax - bx) < straight-eps
+          (
+            score: calc.abs(ay - by)
+              + calc.abs(ax - bx)
+              + if vertical { 1000 } else { 0 },
+            seg: {
+              let (fax, fay) = map((ax, ay))
+              let (fbx, fby) = map((bx, by))
+              (fax, fay, fbx, fby)
+            },
+          )
+        })
+        .sorted(key: s => -s.score)
+        .map(s => s.seg)
+      let body = box(
+        fill: elabel-fill,
+        inset: elabel-inset,
+        text(size: elabel-size, fill: elabel-color, lbl),
+      )
+      let m = measure(body)
+      (
+        body: body,
+        segs: segs,
+        hw: m.width / 2cm,
+        hh: m.height / 2cm,
+        tip: map(pts.last()),
+      )
+    }
+    // Every drawn segment, as a final-space obstacle box for the label solver:
+    // paths are orthogonal, so a segment's bounding box (degenerate in one
+    // axis) is the segment exactly. Tagged with its edge — a label may sit on
+    // its own line (and break it up), never on another's.
+    let edge-lines = ()
+    let line-boxes = (ei, pts) => range(pts.len() - 1).map(i => {
+      let (fax, fay) = map(pts.at(i))
+      let (fbx, fby) = map(pts.at(i + 1))
+      (
+        edge: ei,
+        box: (
+          (fax + fbx) / 2,
+          (fay + fby) / 2,
+          calc.abs(fax - fbx) / 2,
+          calc.abs(fay - fby) / 2,
+        ),
+      )
+    })
+    // An author's per-edge `label-offset`, in canvas units. It is a final-page
+    // shift (+y up, +x right) — the label anchors are already in mapped page
+    // space, so no orientation transpose is needed.
+    let label-off = e => {
+      let o = e.at("label-offset", default: none)
+      if o == none { (0, 0) } else { (o.at(0) / 1cm, o.at(1) / 1cm) }
     }
 
     // Diagram extent; back-edges climb a side channel, long edges take a corridor.
@@ -371,19 +423,29 @@
         } else {
           // Leave at the source's x (a multi-output node spreads toward each target)
           // and run straight into the target's flow-entry face; bend only if the
-          // source overhangs the target.
+          // source overhangs the target. The 0.7 spread must match place's
+          // projected-landing factor (place.typ, `let half = 0.7 * ..`) so the
+          // exit lands exactly on the seat place allocated for it.
           let exit = attach(
             s,
             if fanout.at(str(e.from), default: 0) == 1 { s.x } else { t.x },
             false,
             0.7,
           )
-          let entry = attach(t, exit.at(0), true, 1.0)
-          if calc.abs(exit.at(0) - entry.at(0)) < straight-eps {
-            (exit, entry)
+          // A parent the widen caps left off the target's face bends into its
+          // allocated seat: down to its fanned approach height, across, in.
+          let ds = dseat.at(str(e.from) + ">" + str(e.to), default: none)
+          if ds != none {
+            let entry = attach(t, ds.x, true, 1.0)
+            (exit, (exit.at(0), ds.ay), (entry.at(0), ds.ay), entry)
           } else {
-            let my = (exit.at(1) + entry.at(1)) / 2
-            (exit, (exit.at(0), my), (entry.at(0), my), entry)
+            let entry = attach(t, exit.at(0), true, 1.0)
+            if calc.abs(exit.at(0) - entry.at(0)) < straight-eps {
+              (exit, entry)
+            } else {
+              let my = (exit.at(1) + entry.at(1)) / 2
+              (exit, (exit.at(0), my), (entry.at(0), my), entry)
+            }
           }
         }
         line(
@@ -391,7 +453,14 @@
           stroke: edge-stroke,
           mark: (end: ">", fill: arrow-fill, scale: arrow-scale),
         )
-        if e.label != none { edge-label(e.label, pts) }
+        edge-lines += line-boxes(ei, pts)
+        if e.label != none {
+          labelled.push((
+            ..label-item(e.label, pts),
+            edge: ei,
+            off: label-off(e),
+          ))
+        }
       } else if e.kind == "back" {
         // A loop climbs a side channel: out of the source's side, up, into the target's.
         let left = s.x <= center-x
@@ -415,7 +484,46 @@
           stroke: edge-stroke,
           mark: (end: ">", fill: arrow-fill, scale: arrow-scale),
         )
-        if e.label != none { edge-label(e.label, pts) }
+        edge-lines += line-boxes(ei, pts)
+        if e.label != none {
+          labelled.push((
+            ..label-item(e.label, pts),
+            edge: ei,
+            off: label-off(e),
+          ))
+        }
+      } else if e.kind == "self" {
+        // A node onto itself: a small rectangular loop off the source's right
+        // side (its cross-axis side once `map`ped), out and back into the same
+        // face at quarter-height above and below centre. The parallelogram's
+        // slanted side crosses the flank io-slant/2 in, like the back-edge case.
+        let a = (
+          s.w / 2
+            - if s.shape == "parallelogram" { io-slant / 2 } else {
+              0
+            }
+        )
+        let d = node-gap * 0.7
+        let x0 = s.x + a
+        let pts = (
+          (x0, s.y + s.h / 4),
+          (x0 + d, s.y + s.h / 4),
+          (x0 + d, s.y - s.h / 4),
+          (x0, s.y - s.h / 4),
+        )
+        line(
+          ..pts.map(map),
+          stroke: edge-stroke,
+          mark: (end: ">", fill: arrow-fill, scale: arrow-scale),
+        )
+        edge-lines += line-boxes(ei, pts)
+        if e.label != none {
+          labelled.push((
+            ..label-item(e.label, pts),
+            edge: ei,
+            off: label-off(e),
+          ))
+        }
       } else {
         // A long edge drops down its corridor into the target's top — the corridor,
         // vertical run, and entry share one x, so the drop is straight whenever the
@@ -427,12 +535,12 @@
         let cx = r.cx
         let side-ok = r.side-ok
         let entry = attach(t, r.entry, true, 1.0)
-        let ay = entry.at(1) + rank-gap / 2
+        let ay = r.ay
         let head = if side-ok {
           let sx = if cx < s.x { s.x - s.w / 2 } else { s.x + s.w / 2 }
           ((sx, s.y), (cx, s.y))
         } else {
-          let dy = s.y - s.h / 2 - rank-gap / 2
+          let dy = r.hy
           ((s.x, s.y - s.h / 2), (s.x, dy), (cx, dy))
         }
         let pts = head + ((cx, ay), (entry.at(0), ay), entry)
@@ -441,8 +549,33 @@
           stroke: edge-stroke,
           mark: (end: ">", fill: arrow-fill, scale: arrow-scale),
         )
-        if e.label != none { edge-label(e.label, pts) }
+        edge-lines += line-boxes(ei, pts)
+        if e.label != none {
+          labelled.push((
+            ..label-item(e.label, pts),
+            edge: ei,
+            off: label-off(e),
+          ))
+        }
       }
+    }
+
+    // Labels next, over every line at once: anchors solved together so labels
+    // dodge each other and the node boxes (see label-spots).
+    let boxes = pos
+      .values()
+      .map(p => {
+        let (fx, fy) = map((p.x, p.y))
+        let (hw, hh) = if orientation == "horizontal" {
+          (p.h / 2, p.w / 2)
+        } else {
+          (p.w / 2, p.h / 2)
+        }
+        (fx, fy, hw, hh)
+      })
+    let spots = label-spots(labelled, boxes, edge-lines, head-room: stub)
+    for (i, it) in labelled.enumerate() {
+      content(spots.at(i), it.body)
     }
 
     for p in pos.values() { draw-node(p) }

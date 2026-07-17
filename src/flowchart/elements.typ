@@ -16,9 +16,19 @@
   fill: fill,
 )
 
-#let edge(from, to, label: none) = (
+// `label-offset` is the escape hatch for a stubborn label: a `(x, y)` pair of
+// lengths that shifts *this* label from wherever the layout placed it — `+y`
+// up, `+x` right, as seen on the finished page (the same in either
+// orientation). The move is honoured exactly (the automatic dodging of nodes,
+// other labels and lines is for the unattended case; here the author has
+// decided), and later labels treat the moved position as occupied, so nudging
+// one never quietly buries another.
+//
+//   edge("orch", "llm", label: [Queries LLM], label-offset: (0pt, 5pt))
+#let edge(from, to, label: none, label-offset: none) = (
   kind: "edge",
   from: from,
   to: to,
   label: label,
+  label-offset: label-offset,
 )

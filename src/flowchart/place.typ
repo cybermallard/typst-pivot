@@ -1,7 +1,8 @@
 // place: measured cells -> coordinates. Pure, no cetz — the geometric half of the
 // flowchart pipeline. `layout` fixes each node's rank and order; `place` turns
 // measured sizes into positions — relaxing each rank toward a straight spine,
-// widening a merge target to seat its inputs, choosing each long edge's corridor —
+// widening a merge target to seat its inputs, choosing each long edge's corridor,
+// and aligning an unanchored node (one with no direct edges) over its corridors —
 // and `render` owns measurement and drawing, which need the document context.
 //
 // cells: one dict per node; reads index, rank, order, w, h, th, shape (extra keys
@@ -24,12 +25,24 @@
   rank-gap: none,
   pad-x: none,
   back-margin: none,
+  max-reach: none,
+  widen-skew: none,
+  edge-clearance: none,
+  lane-gap: none,
+  stub: none,
+  margin-step: none,
 ) = {
   for (name, v) in (
     ("node-gap", node-gap),
     ("rank-gap", rank-gap),
     ("pad-x", pad-x),
     ("back-margin", back-margin),
+    ("max-reach", max-reach),
+    ("widen-skew", widen-skew),
+    ("edge-clearance", edge-clearance),
+    ("lane-gap", lane-gap),
+    ("stub", stub),
+    ("margin-step", margin-step),
   ) {
     assert(v != none, message: "place: `" + name + "` is required")
   }
@@ -44,6 +57,20 @@
     hof.insert(str(c.index), c.h)
   }
 
+  // Automatic breathing room: a node's packing footprint grows with its edge
+  // count — a busy hub holds its rank-mates (and passing corridors) further
+  // off than a chain link does. Placement-only: the drawn face keeps `w`.
+  let mof = (:)
+  for c in cells { mof.insert(str(c.index), 0) }
+  for e in edges {
+    for k in (e.from, e.to) {
+      mof.insert(str(k), mof.at(str(k)) + 1)
+    }
+  }
+  for (k, deg) in mof {
+    mof.insert(k, margin-step * calc.max(0, deg - 2))
+  }
+
   // Nodes of each rank, in order; rank height is its tallest node.
   let order-in-rank = range(ranks).map(r => cells
     .filter(c => c.rank == r)
@@ -52,15 +79,14 @@
   let rank-h = order-in-rank.map(row => if row.len() > 0 {
     calc.max(..row.map(a => hof.at(str(a))))
   } else { 0 })
-  let rank-y = (0,)
-  for r in range(1, ranks) {
-    rank-y.push(
-      rank-y.at(r - 1) - (rank-h.at(r - 1) / 2 + rank-gap + rank-h.at(r) / 2),
-    )
-  }
+  // (Vertical positions are assigned late: the gap between two ranks adapts to
+  // the edge traffic that must fan through it, which is only known once seats
+  // are allocated.)
 
-  // Neighbours across ranks, from the *direct* edges only (long/back edges route on
-  // the side and shouldn't tug nodes out of line).
+  // Neighbours across ranks, from the *direct* edges only — long/back edges route
+  // on the side and shouldn't tug spine nodes out of line. (A node absent from
+  // this map has no spine to be tugged out of; the widen loop below aligns it
+  // over its long edges' corridors instead.)
   let nbr = (:)
   for e in edges {
     if e.kind == "direct" {
@@ -93,22 +119,46 @@
     }
   }
 
+  // How many long edges each *unanchored* node (no direct edges) touches. With
+  // several, the node has no column a corridor should prefer — preferring the
+  // source diverges: the target widens toward the source's column while that
+  // very widening repacks the ranks and drifts the column further away. Those
+  // edges prefer a corridor near their target instead (see `corridor`).
+  let lcount = (:)
+  for e in edges {
+    if e.kind == "long" {
+      for k in (e.from, e.to) {
+        if str(k) not in nbr {
+          lcount.insert(str(k), lcount.at(str(k), default: 0) + 1)
+        }
+      }
+    }
+  }
+
   // Coordinate assignment: start centred by order, then relax each node toward the
   // median of its neighbours (aligning chains) while a forward and a backward pass
   // hold each rank's separation. Both preserve the minimum gap, so their average
   // does too — the spine straightens without nodes ever overlapping.
-  let relax = widths => {
+  //
+  // Long and back edges don't tug *spine* nodes out of line — but an unanchored
+  // node (no direct edges at all, e.g. a feed that only supplies distant steps)
+  // has no line to be tugged out of. `cwant` carries such a node's current
+  // target: the median of its long edges' corridor columns; it chases that
+  // instead of staying wherever rank packing dropped it.
+  let relax = (widths, cwant) => {
+    // Packing and separation see each node's margined footprint.
+    let pw = a => widths.at(str(a)) + 2 * mof.at(str(a))
     let x = (:)
     for r in range(ranks) {
       let row = order-in-rank.at(r)
       let total = (
-        row.map(a => widths.at(str(a))).sum(default: 0)
+        row.map(a => pw(a)).sum(default: 0)
           + calc.max(row.len() - 1, 0) * node-gap
       )
       let cx = -total / 2
       for a in row {
-        x.insert(str(a), cx + widths.at(str(a)) / 2)
-        cx += widths.at(str(a)) + node-gap
+        x.insert(str(a), cx + pw(a) / 2)
+        cx += pw(a) + node-gap
       }
     }
     for pass in range(12) {
@@ -123,14 +173,16 @@
         if k == 0 { continue }
         let want = row.map(a => {
           let ns = nbr.at(str(a), default: ())
-          if ns.len() > 0 { median(ns.map(nn => x.at(str(nn)))) } else {
+          if ns.len() > 0 { median(ns.map(nn => x.at(str(nn)))) } else if (
+            str(a) in cwant
+          ) {
+            cwant.at(str(a))
+          } else {
             x.at(str(a))
           }
         })
         let sep = i => (
-          widths.at(str(row.at(i))) / 2
-            + node-gap
-            + widths.at(str(row.at(i + 1))) / 2
+          pw(row.at(i)) / 2 + node-gap + pw(row.at(i + 1)) / 2
         )
         let xf = (want.at(0),)
         for i in range(1, k) {
@@ -165,13 +217,15 @@
   // (a decision leaving by a side vertex) the corridor must sit outside the source,
   // its run at u.y clear of u's rank-mates; returns none if none does (caller falls
   // back to a bottom exit).
-  let corridor = (ui, vi, side-exit, x, w) => {
+  let corridor = (ui, vi, side-exit, prefer-target, x, w) => {
     let ur = rankof.at(str(ui))
     let vr = rankof.at(str(vi))
     let ux = x.at(str(ui))
     let uw = w.at(str(ui))
     let vx = x.at(str(vi))
-    let m = node-gap / 2
+    // A routed edge keeps `edge-clearance` from every node it passes, measured
+    // from the node's margined footprint — busy hubs hold corridors further off.
+    let hw = a => w.at(str(a)) / 2 + mof.at(str(a))
     let minx = calc.min(..cells.map(c => (
       x.at(str(c.index)) - w.at(str(c.index)) / 2
     )))
@@ -180,21 +234,23 @@
     )))
     let occupied = ()
     let cands = (vx, minx - back-margin, maxx + back-margin)
-    cands += if side-exit { (ux - uw / 2 - m, ux + uw / 2 + m) } else { (ux,) }
+    cands += if side-exit {
+      (ux - uw / 2 - edge-clearance, ux + uw / 2 + edge-clearance)
+    } else { (ux,) }
     for r in range(calc.min(ur, vr) + 1, calc.max(ur, vr)) {
       let row = order-in-rank.at(r)
       for a in row {
         occupied.push((
-          x.at(str(a)) - w.at(str(a)) / 2 - m,
-          x.at(str(a)) + w.at(str(a)) / 2 + m,
+          x.at(str(a)) - hw(a) - edge-clearance,
+          x.at(str(a)) + hw(a) + edge-clearance,
         ))
       }
       if row.len() > 0 {
         cands.push(
-          calc.min(..row.map(a => x.at(str(a)) - w.at(str(a)) / 2)) - m,
+          calc.min(..row.map(a => x.at(str(a)) - hw(a))) - edge-clearance,
         )
         cands.push(
-          calc.max(..row.map(a => x.at(str(a)) + w.at(str(a)) / 2)) + m,
+          calc.max(..row.map(a => x.at(str(a)) + hw(a))) + edge-clearance,
         )
       }
     }
@@ -202,20 +258,30 @@
     let ok = cx => {
       if not clear(cx) { return false }
       if not side-exit { return true }
-      if cx > ux - uw / 2 - m and cx < ux + uw / 2 + m { return false }
+      if (
+        cx > ux - uw / 2 - edge-clearance and cx < ux + uw / 2 + edge-clearance
+      ) {
+        return false
+      }
       let vx2 = if cx < ux { ux - uw / 2 } else { ux + uw / 2 }
       order-in-rank
         .at(ur)
         .filter(a => a != ui)
         .all(a => (
-          x.at(str(a)) + w.at(str(a)) / 2 <= calc.min(vx2, cx)
-            or x.at(str(a)) - w.at(str(a)) / 2 >= calc.max(vx2, cx)
+          x.at(str(a)) + hw(a) <= calc.min(vx2, cx)
+            or x.at(str(a)) - hw(a) >= calc.max(vx2, cx)
         ))
     }
     cands
       .filter(ok)
-      // Prefer the source's own column (straight drop); break ties toward the target.
-      .sorted(key: c => (calc.abs(ux - c), calc.abs(c - vx)))
+      // Prefer the source's own column (straight drop); break ties toward the
+      // target. A several-feed unanchored source flips this: its column is
+      // adrift, so stay near the target instead.
+      .sorted(key: c => if prefer-target {
+        (calc.abs(c - vx), calc.abs(ux - c))
+      } else {
+        (calc.abs(ux - c), calc.abs(c - vx))
+      })
       .at(0, default: none)
   }
 
@@ -225,9 +291,10 @@
   // which case it steps just outside them.
   let route-long = (from, to, x, w) => {
     let side = shapeof.at(str(from)) == "diamond"
-    let cx = if side { corridor(from, to, true, x, w) } else { none }
+    let pt = lcount.at(str(from), default: 0) >= 2
+    let cx = if side { corridor(from, to, true, pt, x, w) } else { none }
     let side-ok = cx != none
-    if not side-ok { cx = corridor(from, to, false, x, w) }
+    if not side-ok { cx = corridor(from, to, false, pt, x, w) }
     let din-xs = din.at(str(to), default: ()).map(s => x.at(str(s)))
     let entry = cx
     if din-xs.len() > 0 {
@@ -251,40 +318,131 @@
   // widening to cascade down the ranks; the loop breaks well before it on
   // ordinary diagrams.
   let weps = 0.005 // width change below this (canvas units) counts as settled
+  let aeps = 0.02 // an unanchored node within this of its corridor is aligned
   let w = wof
-  let x = relax(w)
+  let x = relax(w, (:))
   let settled = false
+  // The last round's full routes: the seat pass below must see the same
+  // corridors the widths settled against — recomputing them afterwards against
+  // the settled (wider) extents drifts the outside-lane candidates outward and
+  // bends drops the loop had already straightened.
+  let lastr = (:)
+  // Inputs the absolute reach cap has permanently dropped, per node (see the
+  // sticky-exclusion note in the widen pass).
+  let excl = (:)
   for round in range(calc.max(16, ranks + 12)) {
     let ent = (:)
+    lastr = (:)
     for c in cells {
       for it in lin.at(str(c.index), default: ()) {
-        ent.insert(str(it.ei), route-long(it.from, c.index, x, w).entry)
+        let r = route-long(it.from, c.index, x, w)
+        lastr.insert(str(it.ei), r)
+        ent.insert(str(it.ei), r.entry)
       }
     }
-    let stable = true
+    // An unanchored node (absent from every direct edge) with exactly ONE long
+    // edge wants that edge's corridor column — recomputed each round, since
+    // corridors shift as widths settle. Strictly one: with several long edges
+    // the node would sit between its targets, and the targets' widen-to-entry
+    // rule then chases a column between them — each widening pushes the pair
+    // apart and moves the goal, which never converges. A several-edged feed
+    // instead relies on the ordering fallback (layout.typ) to sit among its
+    // consumers, and its edges jog as usual.
+    let cw = (:)
+    for (ei, e) in edges.enumerate() {
+      if e.kind == "long" {
+        let unf = str(e.from) not in nbr
+        let unt = str(e.to) not in nbr
+        if unf or unt {
+          let cx = route-long(e.from, e.to, x, w).cx
+          if unf {
+            cw.insert(str(e.from), cw.at(str(e.from), default: ()) + (cx,))
+          }
+          if unt {
+            cw.insert(str(e.to), cw.at(str(e.to), default: ()) + (cx,))
+          }
+        }
+      }
+    }
+    let cwant = (:)
+    for (k, v) in cw {
+      if v.len() == 1 { cwant.insert(k, v.at(0)) }
+    }
+    // Alignment joins the settle test: exiting while a node is still mid-chase
+    // would freeze it short of its corridor.
+    let stable = cwant.pairs().all(((k, v)) => calc.abs(x.at(k) - v) <= aeps)
     for c in cells {
-      let d = din.at(str(c.index), default: ())
-      let l = lin.at(str(c.index), default: ())
-      let cxn = x.at(str(c.index))
+      let key = str(c.index)
+      let d = din.at(key, default: ())
+      let l = lin.at(key, default: ())
+      let cxn = x.at(key)
       // A lone direct input fans in without widening; two or more merge, so the node
-      // grows to span them. A long input always pulls the node out to its entry.
-      let merge-xs = if d.len() >= 2 { d.map(s => x.at(str(s))) } else { () }
-      let xs = merge-xs + l.map(it => ent.at(str(it.ei)))
-      if xs.len() == 0 { continue }
+      // grows to span them; a long input pulls the node out to its entry. Both only
+      // up to `max-reach`: widths are symmetric about the node's centre, so spanning
+      // an input the packing has pushed far off-centre doubles into a page-wide
+      // face. A further input must not inflate the node — its edge bends into an
+      // allocated seat instead (see the route pass below).
+      let cand = (
+        if d.len() >= 2 {
+          d.map(s => (k: "d" + str(s), e: x.at(str(s))))
+        } else { () }
+      )
+      let cand = (
+        cand
+          + l.map(it => (
+            k: "l" + str(it.ei),
+            e: ent.at(
+              str(it.ei),
+            ),
+          ))
+      )
+      // The absolute cap is *sticky*: an input it drops stays dropped. Settle
+      // wobble otherwise flips borderline inputs in and out of the included
+      // set, and the width limit-cycles instead of converging. The set only
+      // shrinks, so exclusions are finite and the loop contracts in between.
+      let ex = excl.at(key, default: (:))
+      let inc = cand.filter(i => i.k not in ex)
+      for i in inc {
+        if calc.abs(i.e - cxn) > max-reach { ex.insert(i.k, true) }
+      }
+      excl.insert(key, ex)
+      let xs = inc.filter(i => i.k not in ex).map(i => i.e)
+      // Everything excluded: revert to the measured width (an earlier round may
+      // have left a stale wider value).
+      if xs.len() == 0 {
+        if cand.len() > 0 {
+          let nw = wof.at(key)
+          if calc.abs(nw - w.at(key)) > weps { stable = false }
+          w.insert(key, nw)
+        }
+        continue
+      }
       let lo = calc.min(cxn, ..xs)
       let hi = calc.max(cxn, ..xs)
-      let reach = calc.max(cxn - lo, hi - cxn)
+      // Widths are symmetric about the centre, so reaching an input the packing
+      // has pushed off-centre costs double. Cap the imbalance: one side may
+      // out-reach the other by at most `widen-skew` — a node that can't sit
+      // near the middle of its inputs stays label-sized and the arrows bend to
+      // seats on it instead (see the route pass).
+      let lr = cxn - lo
+      let rr = hi - cxn
+      let reach = calc.min(
+        calc.max(lr, rr),
+        calc.min(lr, rr) + widen-skew,
+        max-reach,
+      )
       let nw = calc.max(wof.at(str(c.index)), 2 * reach + 2 * pad-x)
       if calc.abs(nw - w.at(str(c.index))) > weps { stable = false }
       w.insert(str(c.index), nw)
     }
-    // On a stable round nothing moved beyond `weps`, so the current positions are
-    // (numerically) the relaxation of the final widths — consistent, stop here.
+    // On a stable round nothing moved beyond `weps` (and every unanchored node
+    // sits on its corridor), so the current positions are the relaxation of the
+    // final widths — consistent, stop here.
     if stable {
       settled = true
       break
     }
-    x = relax(w)
+    x = relax(w, cwant)
   }
 
   // How many *direct* children each node fans out to. A node with one direct child
@@ -297,18 +455,377 @@
     }
   }
 
-  // Each long edge's route for drawing. The widen loop only needed `.entry` each
-  // round; now that widths have settled, compute the full route once (corridor +
-  // side-ok + entry) — a straight drop, stepped aside only to clear direct inputs.
-  let route = (:)
+  // Per-target seat and route bookkeeping the per-edge router can't do. Direct
+  // parents on the face own their columns; a direct parent the widen caps left
+  // outside the face gets a *seat* allocated inward from its side's face edge
+  // (returned in `dseat` for the renderer to aim at). Long edges follow: a
+  // corridor that lands on the face with room of its own keeps its straight
+  // drop, any other jogs into the next free seat, spaced `node-gap` from every
+  // occupant. Phase 1 is x-only; the vertical gap each target's bent tails fan
+  // through is sized to their number afterwards.
+  // A closure would capture the occupancy list by value and never see later
+  // pushes, so the check takes it explicitly.
+  let free = (sx, tk) => tk.all(t => calc.abs(sx - t) >= node-gap / 2)
+  let allocs = ()
   for c in cells {
-    for it in lin.at(str(c.index), default: ()) {
-      route.insert(str(it.ei), route-long(it.from, c.index, x, w))
+    let d = din.at(str(c.index), default: ())
+    let ins = lin.at(str(c.index), default: ())
+    if d.len() == 0 and ins.len() == 0 { continue }
+    let tx = x.at(str(c.index))
+    let tw = w.at(str(c.index))
+    // `pad-x` keeps seats off the corners of a wide face — but a cross-narrow
+    // node (any plain box in a horizontal flow, whose cross extent is its
+    // measured height) can be barely wider than two pads, collapsing the face
+    // to a point and piling every arrow onto it. Capping the inset at a
+    // quarter of the extent keeps at least half of every face seatable; the
+    // allocate/repair machinery below then spaces landings within it.
+    let inset = calc.min(pad-x, tw / 4)
+    let face-lo = tx - tw / 2 + inset
+    let face-hi = tx + tw / 2 - inset
+    // Each direct parent's *projected landing*: the renderer aims a parent's
+    // entry at its spread exit (toward the target when the parent forks), not
+    // at the parent's own column — modelling the column here let two forking
+    // parents clamp onto the same face edge and double up their arrows. A
+    // projection outside the face bends into an allocated seat like any other
+    // far input.
+    let px = d.map(s => {
+      let sx = x.at(str(s))
+      let aim = if fanout.at(str(s), default: 0) == 1 { sx } else { tx }
+      // The 0.7 fan-spread must match render's `attach(s, .., 0.7)` exit, or a
+      // parent's drawn arrow leaves its source at a different x than the seat
+      // allocated here — keep the two in step (render.typ, direct-edge branch).
+      let half = 0.7 * w.at(str(s)) / 2
+      let land = sx + calc.max(calc.min(aim - sx, half), -half)
+      (s: s, x: land)
+    })
+    let taken = px.filter(p => p.x >= face-lo and p.x <= face-hi).map(p => p.x)
+    let allocate = (cx, tk) => {
+      let side = if cx <= tx { -1 } else { 1 }
+      let s = if side < 0 { face-lo } else { face-hi }
+      let steps = 0
+      while not free(s, tk) and steps < 32 {
+        s = s - side * node-gap
+        steps += 1
+      }
+      calc.max(face-lo, calc.min(face-hi, s))
     }
+    // Everything that must *bend* into the face shares one allocation: parents
+    // the skew cap left off the face, and long edges whose corridor can't take
+    // a free straight drop. Long edges use the settle loop's own routes (see
+    // `lastr`), not a recomputation. Seated straight drops claim their columns
+    // as they come.
+    let seated-longs = ()
+    let benders = ()
+    for p in px.filter(p => p.x < face-lo or p.x > face-hi) {
+      benders.push((kind: "direct", key: str(p.s), cx: p.x))
+    }
+    for e in ins
+      .map(it => (it: it, r: lastr.at(str(it.ei))))
+      .sorted(key: e => -calc.abs(e.r.cx - tx)) {
+      let seated = (
+        e.r.cx >= face-lo and e.r.cx <= face-hi and free(e.r.cx, taken)
+      )
+      if seated {
+        taken.push(e.r.cx)
+        seated-longs.push((ei: e.it.ei, r: e.r))
+      } else {
+        benders.push((kind: "long", ei: e.it.ei, r: e.r, cx: e.r.cx))
+      }
+    }
+    // The straight landings — on-face parents and seated drops — are fixed;
+    // bender seats must never coincide with them or with each other.
+    let fixed = taken
+    // Farthest source first, so it claims the outermost seat on its side.
+    let ordered = benders.sorted(key: b => -calc.abs(b.cx - tx))
+    let seated-benders = ()
+    for b in ordered {
+      let seat = allocate(b.cx, taken)
+      taken.push(seat)
+      seated-benders.push((..b, seat: seat))
+    }
+    // Capacity repair: when the face ran out of gap-spaced slots (the search
+    // clamps and can land on an occupied column), respace the bender seats —
+    // evenly across the face in their left-to-right order, nudged off every
+    // fixed column, each strictly right of the last. Pitch may compress at
+    // absurd fan-in, but every landing on the face stays distinct.
+    let crowded = range(taken.len()).any(i => (
+      range(i + 1, taken.len()).any(j => (
+        calc.abs(taken.at(i) - taken.at(j)) < node-gap / 2 - 0.001
+      ))
+    ))
+    if crowded and seated-benders.len() > 0 {
+      let bysx = seated-benders.sorted(key: b => b.seat)
+      let k = bysx.len()
+      let pitch = calc.min(
+        node-gap / 2,
+        (face-hi - face-lo) / (k + fixed.len() + 1),
+      )
+      let repaired = ()
+      let prev = face-lo - pitch
+      for (i, b) in bysx.enumerate() {
+        let s = calc.max(
+          face-lo + (face-hi - face-lo) * (i + 1) / (k + 1),
+          prev + pitch,
+        )
+        let tries = 0
+        while tries < 8 and fixed.any(fc => calc.abs(s - fc) < pitch) {
+          s = s + pitch
+          tries += 1
+        }
+        s = calc.max(s, prev + 0.02)
+        prev = s
+        repaired.push((..b, seat: s))
+      }
+      seated-benders = repaired
+    }
+    allocs.push((
+      key: str(c.index),
+      rank: c.rank,
+      tx: tx,
+      seated: seated-longs,
+      benders: seated-benders,
+    ))
   }
 
+  // Vertical space adapts to traffic: the gap above a rank grows to hold the
+  // largest fan of bent tails arriving there (at `lane-gap` pitch, entered by
+  // at least a `stub`-length final drop), instead of squeezing them into a
+  // fixed fraction of `rank-gap`.
+  let traffic = range(ranks).map(_ => 0)
+  for a in allocs {
+    for side in (-1, 1) {
+      let n = a
+        .benders
+        .filter(b => if side < 0 { b.cx <= a.tx } else { b.cx > a.tx })
+        .len()
+      traffic.at(a.rank) = calc.max(traffic.at(a.rank), n)
+    }
+  }
+  let gaps = range(ranks).map(r => if r == 0 { 0 } else {
+    calc.max(rank-gap, 2 * (stub + traffic.at(r) * lane-gap))
+  })
+  let rank-y = (0,)
+  for r in range(1, ranks) {
+    rank-y.push(
+      rank-y.at(r - 1) - (rank-h.at(r - 1) / 2 + gaps.at(r) + rank-h.at(r) / 2),
+    )
+  }
   let y = (:)
   for c in cells { y.insert(str(c.index), rank-y.at(c.rank)) }
 
-  (x: x, y: y, w: w, route: route, fanout: fanout, settled: settled)
+  // Heights: a seated drop keeps its label run at the gap's midpoint; bent
+  // tails fan at fixed pitch — farthest lowest, so nested tails and the
+  // corridors that terminate on them never cross.
+  let route = (:)
+  let dseat = (:)
+  for a in allocs {
+    let top = y.at(a.key) + hof.at(a.key) / 2
+    for s in a.seated {
+      route.insert(str(s.ei), (
+        cx: s.r.cx,
+        side-ok: s.r.side-ok,
+        entry: s.r.cx,
+        ay: top + gaps.at(a.rank) / 2,
+      ))
+    }
+    for side in (-1, 1) {
+      let group = a
+        .benders
+        .filter(b => if side < 0 { b.cx <= a.tx } else { b.cx > a.tx })
+        .sorted(key: b => -calc.abs(b.cx - a.tx))
+      for (i, b) in group.enumerate() {
+        let ay = top + stub + i * lane-gap
+        if b.kind == "direct" {
+          // Keyed by (from, to): a direct edge is unique per pair here.
+          dseat.insert(b.key + ">" + a.key, (x: b.seat, ay: ay))
+        } else {
+          route.insert(str(b.ei), (
+            cx: b.r.cx,
+            side-ok: b.r.side-ok,
+            entry: b.seat,
+            ay: ay,
+          ))
+        }
+      }
+    }
+  }
+  // Every long edge also carries its head clearance: the y its corridor may
+  // drop to below the source before jogging across, half-way into the gap
+  // beneath the source's rank.
+  for (ei, e) in edges.enumerate() {
+    if e.kind == "long" and str(ei) in route {
+      let rs = rankof.at(str(e.from))
+      // A long edge always descends, so its source is never the last rank and
+      // `rs + 1` is in range; `default` degrades a mis-ranked edge to a plain
+      // drop instead of crashing, rather than trusting that invariant blindly.
+      let hy = (
+        y.at(str(e.from))
+          - hof.at(str(e.from)) / 2
+          - gaps.at(rs + 1, default: rank-gap) / 2
+      )
+      route.insert(str(ei), (..route.at(str(ei)), hy: hy))
+    }
+  }
+  // Jogging corridors must not share a lane: where two overlap in x and in the
+  // ranks they cross, shift the later one outward by `lane-gap` until clear.
+  // Seated corridors never move — theirs is the straight drop being protected.
+  let lanes = ()
+  for (ei, e) in edges.enumerate() {
+    if e.kind != "long" { continue }
+    let r = route.at(str(ei))
+    let span = (
+      calc.min(rankof.at(str(e.from)), rankof.at(str(e.to))),
+      calc.max(rankof.at(str(e.from)), rankof.at(str(e.to))),
+    )
+    let seated = calc.abs(r.cx - r.entry) < 0.01
+    if seated {
+      lanes.push((cx: r.cx, span: span))
+      continue
+    }
+    let tx = x.at(str(e.to))
+    let side = if r.cx <= tx { -1 } else { 1 }
+    let cx = r.cx
+    let steps = 0
+    while (
+      steps < 32
+        and lanes.any(l => (
+          calc.abs(l.cx - cx) < lane-gap
+            and l.span.at(0) < span.at(1)
+            and span.at(0) < l.span.at(1)
+        ))
+    ) {
+      cx = cx + side * lane-gap
+      steps += 1
+    }
+    lanes.push((cx: cx, span: span))
+    if cx != r.cx { route.insert(str(ei), (..r, cx: cx)) }
+  }
+
+  (
+    x: x,
+    y: y,
+    w: w,
+    route: route,
+    dseat: dseat,
+    fanout: fanout,
+    settled: settled,
+  )
+}
+
+// label-spots: collision-free anchors for edge labels. Pure — the renderer
+// measures each label and hands over final-space geometry; this walks every
+// labelled edge in order and picks the first spot that overlaps no node box,
+// no label already placed, and no other edge's line — a label is drawn over
+// every line with a knockout behind it, so a spot on a foreign line would
+// erase that line. Its own line is exempt: sitting on it (and breaking it up)
+// is the point.
+//
+// items: per labelled edge — `segs`: its segments as (ax, ay, bx, by) tuples,
+//        already sorted by the caller's preference (longest vertical run first,
+//        so an uncontested label sits exactly where it always has); `hw`/`hh`:
+//        the label box's half-extents; `edge`: the edge the label belongs to
+//        (its segments in `lines` don't count as obstacles); `tip`: the path's
+//        final point — the arrow tip; `off`: an optional (x, y) author nudge
+//        (canvas units) added to the final anchor and its reserved rectangle.
+// boxes: node rectangles as (cx, cy, hw, hh).
+// lines: every edge's segments as (edge: index, box: (cx, cy, hw, hh)) — the
+//        segment's bounding box, degenerate in one axis (paths are orthogonal,
+//        so that box is the segment, exactly).
+// head-room: how close a label may come to its own arrow tip. The renderer
+//        passes the stub token: the final approach run sized to keep the
+//        arrowhead clear stays visible in full.
+//
+// The own-line exemption has limits — the knockout breaking a long run in the
+// middle is the interrupted-line look, but a label must not blanket its line:
+// a candidate keeps `visible` of its segment showing past both ends of the
+// box (a segment too short for that offers no spots), and stays `head-room`
+// off its own tip (a label on the arrowhead reads as a floating head).
+//
+// Candidates walk each segment at fractions of its length, midpoint first. When
+// every candidate collides, constraints shed in order of harm: first line
+// cleanliness goes (a knockout gap in a foreign line stays legible; a label
+// under a label does not), then, last, the label falls back to the best
+// segment's midpoint (a rare overlap beats a missing label).
+#let label-spots(items, boxes, lines, head-room: none) = {
+  assert(head-room != none, message: "label-spots: `head-room` is required")
+  let margin = 0.06 // breathing room between a label and anything else
+  let visible = 0.12 // line that must stay showing past each end of a label
+  let hits = (a, b) => (
+    calc.abs(a.at(0) - b.at(0)) < a.at(2) + b.at(2)
+      and calc.abs(a.at(1) - b.at(1)) < a.at(3) + b.at(3)
+  )
+  let placed = ()
+  let out = ()
+  for it in items {
+    let anchor = none
+    let own = it.at("edge", default: none)
+    let tip = it.at("tip", default: none)
+    // An author's explicit shift (canvas units, page space). Applied to the
+    // chosen anchor and to the rectangle later labels dodge — so a nudged
+    // label still reserves its real footprint.
+    let off = it.at("off", default: (0, 0))
+    // A crowded diagram may leave no spot satisfying everything. Degrade in
+    // order of harm: a second pass gives up line cleanliness (a knockout gap
+    // in a foreign line is legible) before a label may ever cover another
+    // label, a node, or its own arrowhead.
+    for relaxed in (false, true) {
+      if anchor != none { break }
+      for s in it.segs {
+        if anchor != none { break }
+        // Length and the label's half-extent along the segment's axis
+        // (segments are orthogonal, so one of the two terms is zero).
+        let l = calc.abs(s.at(2) - s.at(0)) + calc.abs(s.at(3) - s.at(1))
+        let ext = if (
+          calc.abs(s.at(3) - s.at(1)) >= calc.abs(s.at(2) - s.at(0))
+        ) {
+          it.hh
+        } else {
+          it.hw
+        }
+        // Coarse spots first — established placements stay put — then a finer
+        // ring, reached only when all five fail, so a label threads a narrow
+        // clean band (between two crossing lines, say) before giving up.
+        for f in (
+          0.5,
+          0.35,
+          0.65,
+          0.2,
+          0.8,
+          0.12,
+          0.28,
+          0.42,
+          0.58,
+          0.72,
+          0.88,
+        ) {
+          if f * l < ext + visible or (1 - f) * l < ext + visible { continue }
+          let px = s.at(0) + (s.at(2) - s.at(0)) * f
+          let py = s.at(1) + (s.at(3) - s.at(1)) * f
+          let r = (px, py, it.hw + margin, it.hh + margin)
+          if (
+            (tip == none or not hits(r, (..tip, head-room, head-room)))
+              and placed.all(q => not hits(r, q))
+              and boxes.all(q => not hits(r, q))
+              and (
+                relaxed or lines.all(q => q.edge == own or not hits(r, q.box))
+              )
+          ) {
+            anchor = (px + off.at(0), py + off.at(1))
+            placed.push((anchor.at(0), anchor.at(1), r.at(2), r.at(3)))
+            break
+          }
+        }
+      }
+    }
+    if anchor == none {
+      let s = it.segs.at(0)
+      anchor = (
+        (s.at(0) + s.at(2)) / 2 + off.at(0),
+        (s.at(1) + s.at(3)) / 2 + off.at(1),
+      )
+      placed.push((anchor.at(0), anchor.at(1), it.hw + margin, it.hh + margin))
+    }
+    out.push(anchor)
+  }
+  out
 }

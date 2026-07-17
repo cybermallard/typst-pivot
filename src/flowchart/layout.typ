@@ -5,8 +5,12 @@
 //   direct — one rank down; drawn straight/orthogonally between the two nodes.
 //   long   — more than one rank down; routed down a side channel by the renderer.
 //   back   — a reversed cycle edge; routed up a side channel.
+//   self   — a node onto itself; drawn as a small loop, outside the ranking graph.
 // Only direct edges shape the ordering and (later) the coordinates — long and back
-// edges keep clear of the body, so they don't distort the spine.
+// edges keep clear of the body, so they don't distort the spine. One exception: a
+// node with no direct edges at all (an unanchored feed) has no spine to distort,
+// so it takes its ordering hint from its long-edge partners — placement will then
+// align it over its corridor.
 //
 // Output: `cells` (one per node, with a `rank` and `order`) and `edges` (each with
 // `from`, `to`, `label`, `kind`).
@@ -19,8 +23,13 @@
   if n == 0 { return (cells: (), edges: (), ranks: 0) }
 
   // --- cycle removal: DFS, mark edges that close back onto the current stack ---
+  // Self-loops (a node onto itself — a retry/poll-in-place step) never enter the
+  // ranking graph: they don't order or rank anything, and feeding one in stalls
+  // the topological sort (a node can't lower its own in-degree). They are kept in
+  // the edge list and drawn as a small self-return loop (kind "self", below).
   let succ-e = (:)
   for (ei, e) in edges.enumerate() {
+    if e.from == e.to { continue }
     let u = str(ids.at(e.from))
     succ-e.insert(u, succ-e.at(u, default: ()) + ((v: ids.at(e.to), ei: ei),))
   }
@@ -55,6 +64,7 @@
   let indeg = (:)
   for i in range(n) { indeg.insert(str(i), 0) }
   for (ei, e) in edges.enumerate() {
+    if e.from == e.to { continue }
     let (fu, tv) = if reversed.at(str(ei), default: false) {
       (ids.at(e.to), ids.at(e.from))
     } else {
@@ -78,20 +88,32 @@
   // --- classify edges; only direct (one-rank) edges feed the ordering ---
   let up = (:)
   let down = (:)
+  let lpart = (:) // long-edge partners, the ordering fallback for unanchored nodes
   let epaths = ()
   for (ei, e) in edges.enumerate() {
     let u = ids.at(e.from)
     let v = ids.at(e.to)
-    let kind = if reversed.at(str(ei), default: false) {
+    let kind = if e.from == e.to {
+      // A self-loop: no rank relation, drawn as a small loop on the node.
+      "self"
+    } else if reversed.at(str(ei), default: false) {
       "back"
     } else if rank.at(v) - rank.at(u) == 1 {
       down.insert(str(u), down.at(str(u), default: ()) + (v,))
       up.insert(str(v), up.at(str(v), default: ()) + (u,))
       "direct"
     } else {
+      lpart.insert(str(u), lpart.at(str(u), default: ()) + (v,))
+      lpart.insert(str(v), lpart.at(str(v), default: ()) + (u,))
       "long"
     }
-    epaths.push((from: u, to: v, label: e.label, kind: kind))
+    epaths.push((
+      from: u,
+      to: v,
+      label: e.label,
+      label-offset: e.at("label-offset", default: none),
+      kind: kind,
+    ))
   }
 
   // --- order within ranks: initial declaration order, then barycenter sweeps ---
@@ -117,6 +139,17 @@
           let nb = adj.at(str(i), default: ())
           let bc = if nb.len() > 0 {
             nb.map(j => posx.at(str(j))).sum() / nb.len()
+          } else if (
+            str(i) not in up
+              and str(i) not in down
+              and lpart.at(str(i), default: ()).len() == 1
+          ) {
+            // No direct edges and exactly one long edge: order this unanchored
+            // node by that partner, so it starts on the side placement will
+            // align it to. Strictly one — seating a several-edged feed between
+            // its targets puts its corridor between them too, and the targets'
+            // widen-to-entry rule then fights across it without settling.
+            posx.at(str(lpart.at(str(i)).at(0)))
           } else {
             posx.at(str(i))
           }

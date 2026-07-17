@@ -7,17 +7,57 @@ a minor release — each is flagged with a migration note.
 
 ## [Unreleased]
 
+### Changed
+
+- `flowchart`: spacing is now set separately for the three gaps that matter —
+  node to node (`flowchart-node-gap`), an edge to a node it passes
+  (`flowchart-edge-clearance`), and edge to edge (`flowchart-lane-gap`). The
+  space between two layers also grows when many arrows must fan through it, an
+  arrow always has enough straight run to show its arrowhead where it meets a
+  node (`flowchart-stub`), and a node with many connections keeps its
+  neighbours a little further away (`flowchart-margin-step`).
+- `flowchart`: a node that connects only to a distant step — a feed or store
+  sitting off to one side — now lines up with that connection, so its line runs
+  straight to the target instead of taking a detour around other nodes.
+
 ### Added
 
 - `flowchart`: a `"cylinder"` node shape — useful to visualise a feed, 
   database, or log store. It stays upright in both orientations.
+- `flowchart`: a self-loop — an `edge` from a node back to itself, such as a
+  retry or poll step — now draws as a small loop beside the node. A node can
+  have a self-loop and other outgoing edges at once; before, that combination
+  failed to lay out.
+- `flowchart`: `edge(.., label-offset: (x, y))` moves one label off the spot
+  the layout chose for it (`+y` up, `+x` right, the same in either
+  orientation). The move is applied exactly — you place it where you want it —
+  and the label reserves its new position, so the other labels keep clear of
+  it. Handy when a label on a short edge or a self-loop sits on its line; for a
+  whole crowded area, widen `flowchart-lane-gap` instead.
 
 ### Fixed
 
+- `flowchart`: a node with many incoming arrows could be stretched extremely
+  wide trying to reach every source. It now widens only as far as it can while
+  staying roughly centred over its sources (`flowchart-widen-skew`,
+  `flowchart-max-reach`); a source further out than that keeps its place, and
+  its arrow bends in to meet the node rather than dragging the node wider.
+- `flowchart`: several arrows arriving at one node could land on top of each
+  other. Each arrow now arrives at its own point on the node, spaced from the 
+  rest, by its own path in.
 - `flowchart`: an edge's arrow could land in the space around a node's rounded corner 
   or slanted edge instead of its outline — a node where arrows converge coming out too narrow,
   or an arrow using the bounding box rather than the shape. Node widths are now computed reliably 
   and every edge meets the shape on its outline.
+- `flowchart`: edge labels could overlap one another, be struck through by a
+  line drawn later, or blank out part of another edge's line. Labels are now
+  positioned as a group — each sits clear of the others, of every node, and of
+  every other line — and each stays off its own arrowhead, with its line left
+  showing on both sides.
+- `flowchart`: a node whose connections all reach past its immediate neighbours
+  to more distant steps (a feed off to the side, say) could make the whole
+  diagram grow wider and wider without ever reaching a stable layout. Such a
+  node now stays put, and the diagram lays out normally.
 
 ## [0.2.0] - 2026-07-05
 
