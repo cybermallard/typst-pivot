@@ -13,7 +13,8 @@
 //
 // Returns dicts keyed by str(node index) — `x`, `y`, `w` (heights are the
 // caller's) — plus `route` (per long-edge index: cx, side-ok, entry), `fanout`
-// (direct children per node), and `settled`: whether the widen loop reached its
+// (direct children per node), `hulls` (per group id: the box rectangle and
+// nesting depth), and `settled`: whether the widen loop reached its
 // fixed point within the bound. If it didn't, widths may under-span their inputs;
 // the renderer's shape-aware attach still lands every edge on an outline.
 
@@ -21,6 +22,7 @@
   cells,
   edges,
   ranks,
+  groups: (),
   node-gap: none,
   rank-gap: none,
   pad-x: none,
@@ -31,6 +33,8 @@
   lane-gap: none,
   stub: none,
   margin-step: none,
+  group-pad: none,
+  title-room: none,
 ) = {
   for (name, v) in (
     ("node-gap", node-gap),
@@ -43,12 +47,122 @@
     ("lane-gap", lane-gap),
     ("stub", stub),
     ("margin-step", margin-step),
+    ("group-pad", group-pad),
+    ("title-room", title-room),
   ) {
     assert(v != none, message: "place: `" + name + "` is required")
   }
   if cells.len() == 0 {
-    return (x: (:), y: (:), w: (:), route: (:), fanout: (:), settled: true)
+    return (
+      x: (:),
+      y: (:),
+      w: (:),
+      route: (:),
+      fanout: (:),
+      hulls: (:),
+      settled: true,
+    )
   }
+  // Groups with at least one (transitive) node member get geometry; an empty
+  // group renders nothing. `gp` is each node's enclosure path.
+  let live-groups = groups.filter(g => g.nodes.len() > 0)
+  let gp = (:)
+  for c in cells { gp.insert(str(c.index), c.at("gpath", default: ())) }
+  let gspan = (:)
+  for g in live-groups {
+    let rs = g.nodes.map(a => cells.at(a).rank)
+    gspan.insert(g.id, (calc.min(..rs), calc.max(..rs)))
+  }
+  // Whether input `s` sits in a box that excludes node `t` across t's own
+  // rank — such a box's band is ground t may never occupy, so t must not
+  // widen toward s (the arrow bends into a seat instead).
+  let boxed-off = (t, s) => {
+    let pt = gp.at(str(t), default: ())
+    let tr = cells.at(t).rank
+    gp
+      .at(str(s), default: ())
+      .any(gid => (
+        not pt.contains(gid)
+          and {
+            let sp = gspan.at(gid, default: none)
+            sp != none and tr >= sp.at(0) and tr <= sp.at(1)
+          }
+      ))
+  }
+  // A group's horizontal band under the current positions: member nodes and
+  // child bands wrapped with `group-pad` — and never narrower than its
+  // measured title (`tw`, supplied by the renderer), so a long name can't
+  // overflow its box. This mirrors the hull computation exactly (children
+  // recursively, then pad, then the title minimum), and one helper feeds the
+  // push-out sweep and the corridor obstacles, so obstacle math and the drawn
+  // border can never disagree.
+  let live-by-id = (:)
+  for g in live-groups { live-by-id.insert(g.id, g) }
+  // A self-loop draws a small return loop off the node's cross-axis side —
+  // `node-gap * 0.7` deep, matching the renderer's self-edge branch — so a
+  // box around such a node must reserve that room too.
+  let selfy = (:)
+  for e in edges {
+    if e.kind == "self" { selfy.insert(str(e.from), true) }
+  }
+  let loop-room = a => if str(a) in selfy { node-gap * 0.7 } else { 0 }
+  // `chan` reserves internal routing channels: per group id, (l:, r:) counts
+  // of corridor lanes running just inside that border — each widens the band
+  // by a lane. Threaded explicitly (closures capture by value) so every
+  // consumer sees the same reservations.
+  let gband-rec = (self, g, x, w, chan) => {
+    let lo = calc.min(..g.nodes.map(a => x.at(str(a)) - w.at(str(a)) / 2))
+    let hi = calc.max(..g.nodes.map(a => (
+      x.at(str(a)) + w.at(str(a)) / 2 + loop-room(a)
+    )))
+    for m in g.members {
+      if m in live-by-id {
+        let cb = self(self, live-by-id.at(m), x, w, chan)
+        lo = calc.min(lo, cb.lo)
+        hi = calc.max(hi, cb.hi)
+      }
+    }
+    let ch = chan.at(g.id, default: (l: 0, r: 0))
+    lo -= group-pad + ch.l * lane-gap
+    hi += group-pad + ch.r * lane-gap
+    let want = g.at("tw", default: 0) + group-pad
+    if hi - lo < want {
+      let c = (lo + hi) / 2
+      (lo: c - want / 2, hi: c + want / 2)
+    } else { (lo: lo, hi: hi) }
+  }
+  // Reservations are set by the segmented-corridor pass below; closures
+  // capture by value, so `ch` rides along as an argument everywhere.
+  let gband = (g, x, w, ch) => gband-rec(gband-rec, g, x, w, ch)
+  // The innermost box both endpoints of an edge share ((none) if unboxed or
+  // in disjoint boxes): the deepest common prefix of their enclosure paths.
+  let shared-box = (u, v) => {
+    let pu = gp.at(str(u), default: ())
+    let pv = gp.at(str(v), default: ())
+    let c = 0
+    while c < calc.min(pu.len(), pv.len()) and pu.at(c) == pv.at(c) {
+      c += 1
+    }
+    if c == 0 { none } else { pu.at(c - 1) }
+  }
+  // Group borders lying between two rank-mates: the groups their enclosure
+  // paths diverge over. Each border needs `group-pad` of room — plus a lane
+  // per routing channel reserved inside it.
+  let crossed-groups = (a, b) => {
+    let pa = gp.at(str(a), default: ())
+    let pb = gp.at(str(b), default: ())
+    let c = 0
+    while c < calc.min(pa.len(), pb.len()) and pa.at(c) == pb.at(c) {
+      c += 1
+    }
+    pa.slice(c) + pb.slice(c)
+  }
+  let border-room = (a, b, ch) => crossed-groups(a, b)
+    .map(gid => {
+      let cc = ch.at(gid, default: (l: 0, r: 0))
+      group-pad + (cc.l + cc.r) * lane-gap
+    })
+    .sum(default: 0)
 
   let wof = (:)
   let hof = (:)
@@ -145,20 +259,28 @@
   // has no line to be tugged out of. `cwant` carries such a node's current
   // target: the median of its long edges' corridor columns; it chases that
   // instead of staying wherever rank packing dropped it.
-  let relax = (widths, cwant) => {
-    // Packing and separation see each node's margined footprint.
+  let relax = (widths, cwant, ch) => {
+    // Packing and separation see each node's margined footprint; a group
+    // border between two rank-mates costs `group-pad` more (plus any routing
+    // channels reserved inside it), reserving the room the hull's edge will
+    // occupy.
     let pw = a => widths.at(str(a)) + 2 * mof.at(str(a))
     let x = (:)
     for r in range(ranks) {
       let row = order-in-rank.at(r)
+      let gaps-in-row = range(calc.max(row.len() - 1, 0)).map(i => (
+        node-gap + border-room(row.at(i), row.at(i + 1), ch)
+      ))
       let total = (
         row.map(a => pw(a)).sum(default: 0)
-          + calc.max(row.len() - 1, 0) * node-gap
+          + gaps-in-row.sum(
+            default: 0,
+          )
       )
       let cx = -total / 2
-      for a in row {
+      for (k, a) in row.enumerate() {
         x.insert(str(a), cx + pw(a) / 2)
-        cx += pw(a) + node-gap
+        cx += pw(a) + gaps-in-row.at(k, default: 0)
       }
     }
     for pass in range(12) {
@@ -182,7 +304,10 @@
           }
         })
         let sep = i => (
-          pw(row.at(i)) / 2 + node-gap + pw(row.at(i + 1)) / 2
+          pw(row.at(i)) / 2
+            + node-gap
+            + border-room(row.at(i), row.at(i + 1), ch)
+            + pw(row.at(i + 1)) / 2
         )
         let xf = (want.at(0),)
         for i in range(1, k) {
@@ -217,7 +342,7 @@
   // (a decision leaving by a side vertex) the corridor must sit outside the source,
   // its run at u.y clear of u's rank-mates; returns none if none does (caller falls
   // back to a bottom exit).
-  let corridor = (ui, vi, side-exit, prefer-target, x, w) => {
+  let corridor = (ui, vi, side-exit, prefer-target, x, w, ch) => {
     let ur = rankof.at(str(ui))
     let vr = rankof.at(str(vi))
     let ux = x.at(str(ui))
@@ -252,6 +377,45 @@
         cands.push(
           calc.max(..row.map(a => x.at(str(a)) + hw(a))) + edge-clearance,
         )
+      }
+      // A wide-enough gap *between* two row-mates is a corridor column too —
+      // without these, a blocked source column sends the edge fleeing to the
+      // row's far edge (or clean outside the diagram) when a clear channel
+      // runs right next to it.
+      for i in range(calc.max(row.len() - 1, 0)) {
+        let lo = x.at(str(row.at(i))) + hw(row.at(i))
+        let hi = x.at(str(row.at(i + 1))) - hw(row.at(i + 1))
+        if hi - lo >= 2 * edge-clearance { cands.push((lo + hi) / 2) }
+      }
+    }
+    // A group's box blocks corridors that have no business inside it: when
+    // neither endpoint is a member and the box lies across the crossed ranks,
+    // the hull's band joins the obstacles (an edge with an endpoint inside
+    // must cross the border, and does so near that endpoint's own column). A
+    // corridor that does belong inside may run through the box — but not
+    // *along* its border line, so each border keeps a lane's width clear.
+    for g in live-groups {
+      let rs = g.nodes.map(a => rankof.at(str(a)))
+      if (
+        calc.max(..rs) < calc.min(ur, vr) or calc.min(..rs) > calc.max(ur, vr)
+      ) { continue }
+      let b = gband(g, x, w, ch)
+      if (
+        gp.at(str(ui), default: ()).contains(g.id)
+          or gp.at(str(vi), default: ()).contains(g.id)
+      ) {
+        occupied.push((b.lo - lane-gap / 2, b.lo + lane-gap / 2))
+        occupied.push((b.hi - lane-gap / 2, b.hi + lane-gap / 2))
+        // Candidates just clear of the border lanes: when a box's interior is
+        // fully tiled, these keep a corridor findable — a widened border can
+        // otherwise swallow even the outside-the-diagram fallback columns,
+        // leaving no candidate at all.
+        cands.push(b.lo - lane-gap)
+        cands.push(b.hi + lane-gap)
+      } else {
+        occupied.push((b.lo - edge-clearance, b.hi + edge-clearance))
+        cands.push(b.lo - edge-clearance)
+        cands.push(b.hi + edge-clearance)
       }
     }
     let clear = cx => occupied.all(iv => cx <= iv.at(0) or cx >= iv.at(1))
@@ -289,12 +453,19 @@
   // takes a side exit, and where it enters the target's top. The entry sits on the
   // corridor (a straight drop) unless that would crowd the target's direct inputs, in
   // which case it steps just outside them.
-  let route-long = (from, to, x, w) => {
+  let route-long = (from, to, x, w, ch) => {
     let side = shapeof.at(str(from)) == "diamond"
     let pt = lcount.at(str(from), default: 0) >= 2
-    let cx = if side { corridor(from, to, true, pt, x, w) } else { none }
+    let cx = if side { corridor(from, to, true, pt, x, w, ch) } else { none }
     let side-ok = cx != none
-    if not side-ok { cx = corridor(from, to, false, pt, x, w) }
+    if not side-ok { cx = corridor(from, to, false, pt, x, w, ch) }
+    // No candidate at all should be unreachable, but never crash on it:
+    // degrade to a drop at the target's own column and let the shape-aware
+    // attach land the arrow.
+    if cx == none {
+      cx = x.at(str(to))
+      side-ok = false
+    }
     let din-xs = din.at(str(to), default: ()).map(s => x.at(str(s)))
     let entry = cx
     if din-xs.len() > 0 {
@@ -320,7 +491,10 @@
   let weps = 0.005 // width change below this (canvas units) counts as settled
   let aeps = 0.02 // an unanchored node within this of its corridor is aligned
   let w = wof
-  let x = relax(w, (:))
+  let x = relax(w, (:), (:))
+  // The settle loop's final alignment targets, kept for the channel-iteration
+  // re-relax below (an unanchored node must not lose its corridor alignment).
+  let cwant-last = (:)
   let settled = false
   // The last round's full routes: the seat pass below must see the same
   // corridors the widths settled against — recomputing them afterwards against
@@ -335,7 +509,7 @@
     lastr = (:)
     for c in cells {
       for it in lin.at(str(c.index), default: ()) {
-        let r = route-long(it.from, c.index, x, w)
+        let r = route-long(it.from, c.index, x, w, (:))
         lastr.insert(str(it.ei), r)
         ent.insert(str(it.ei), r.entry)
       }
@@ -354,7 +528,7 @@
         let unf = str(e.from) not in nbr
         let unt = str(e.to) not in nbr
         if unf or unt {
-          let cx = route-long(e.from, e.to, x, w).cx
+          let cx = route-long(e.from, e.to, x, w, (:)).cx
           if unf {
             cw.insert(str(e.from), cw.at(str(e.from), default: ()) + (cx,))
           }
@@ -368,13 +542,21 @@
     for (k, v) in cw {
       if v.len() == 1 { cwant.insert(k, v.at(0)) }
     }
+    cwant-last = cwant
     // Alignment joins the settle test: exiting while a node is still mid-chase
     // would freeze it short of its corridor.
     let stable = cwant.pairs().all(((k, v)) => calc.abs(x.at(k) - v) <= aeps)
     for c in cells {
       let key = str(c.index)
-      let d = din.at(key, default: ())
-      let l = lin.at(key, default: ())
+      // An input living in a box that excludes this node at its own rank must
+      // bend into a seat, never widen the node: stretching toward it would
+      // push the face into (or across) that box's band, which the push-out
+      // sweep would then have to undo — for a merge of two sibling boxes'
+      // outputs, unresolvably.
+      let d = din.at(key, default: ()).filter(s => not boxed-off(c.index, s))
+      let l = lin
+        .at(key, default: ())
+        .filter(it => not boxed-off(c.index, it.from))
       let cxn = x.at(key)
       // A lone direct input fans in without widening; two or more merge, so the node
       // grows to span them; a long input pulls the node out to its entry. Both only
@@ -442,7 +624,313 @@
       settled = true
       break
     }
-    x = relax(w, cwant)
+    x = relax(w, cwant, (:))
+  }
+
+  // Push-out: within a rank, ordering keeps a group's members contiguous and
+  // the border-scaled separations hold rank-mates clear — but a group's box is
+  // as wide as its widest rank, so a node in a rank where the group is narrow
+  // (or absent) can still sit inside the band. Each such node escapes to the
+  // nearest clear ground. The bands it must clear are *merged* first: sibling
+  // boxes can abut, and escaping one band only to land in the next (and be
+  // bounced back, forever) is exactly how a node got stranded inside a box —
+  // against the merged interval the nearer edge is chosen once. Borders keep
+  // `group-pad` of air outside (members sit a pad inside, so the line runs
+  // centred in a clear channel); rank-mates that escaped first are stepped
+  // past at `node-gap`. Best-effort: two passes, then whatever remains stays
+  // (a box edge through a pathological nest beats refusing the diagram).
+  // `refine` bundles the two passes so the channel iteration below can rerun
+  // them against reserved-channel geometry. Returns the adjusted positions
+  // and whether anything moved.
+  let refine = (x0, ch) => {
+    let x = x0
+    let moved = false
+    // Sibling boxes keep daylight between their borders. Rank packing spaces
+    // same-rank pairs, but a box edge is a multi-rank maximum (plus any
+    // title-width growth), so two side-by-side boxes can end up touching
+    // even though every row is properly spaced. Where two unrelated groups
+    // share a rank and their bands close within `group-pad`, everything
+    // right of the midpoint shifts right by the deficit — a rigid shear that
+    // opens the gap without disturbing either side's internal layout.
+    for pass in range(if live-groups.len() > 1 { 2 } else { 0 }) {
+      for i in range(live-groups.len()) {
+        for j in range(i + 1, live-groups.len()) {
+          let (ga, gb2) = (live-groups.at(i), live-groups.at(j))
+          // Skip ancestor/descendant pairs (one contains the other) and pairs
+          // whose rank spans don't overlap (stacked boxes may share columns).
+          let related = (
+            ga.nodes.all(a => gp.at(str(a), default: ()).contains(gb2.id))
+              or gb2.nodes.all(a => gp.at(str(a), default: ()).contains(ga.id))
+          )
+          let (sa, sb) = (gspan.at(ga.id), gspan.at(gb2.id))
+          if related or sa.at(1) < sb.at(0) or sb.at(1) < sa.at(0) {
+            continue
+          }
+          let ba = gband(ga, x, w, ch)
+          let bb = gband(gb2, x, w, ch)
+          let (left, right) = if ba.lo <= bb.lo { (ba, bb) } else { (bb, ba) }
+          let deficit = group-pad - (right.lo - left.hi)
+          if deficit > 0.001 {
+            let mid = (left.hi + right.lo) / 2
+            for c in cells {
+              if x.at(str(c.index)) > mid {
+                x.insert(str(c.index), x.at(str(c.index)) + deficit)
+              }
+            }
+            moved = true
+          }
+        }
+      }
+    }
+    // Push-out (see the block comment above): non-members escape the merged
+    // group bands to the nearest clear ground.
+    for pass in range(if live-groups.len() > 0 { 2 } else { 0 }) {
+      let bands = live-groups.map(g => {
+        let rs = g.nodes.map(a => rankof.at(str(a)))
+        let b = gband(g, x, w, ch)
+        (
+          id: g.id,
+          gt: calc.min(..rs),
+          gb: calc.max(..rs),
+          f0: b.lo - group-pad,
+          f1: b.hi + group-pad,
+        )
+      })
+      let half = a => w.at(str(a)) / 2 + mof.at(str(a))
+      for r in range(ranks) {
+        let esc = () // landings already escaped to in this rank: (c, h)
+        for a in order-in-rank.at(r) {
+          let mine = bands
+            .filter(b => (
+              r >= b.gt
+                and r <= b.gb
+                and not gp.at(str(a), default: ()).contains(b.id)
+            ))
+            .map(b => (b.f0, b.f1))
+            .sorted(key: b => b.at(0))
+          if mine.len() == 0 { continue }
+          // Bands whose clear gap is too narrow for this node merge into one
+          // obstacle — a slot it can't occupy is no escape target (this also
+          // absorbs float error where two abutting bands miss by an epsilon).
+          let ha = half(a)
+          let merged = ()
+          for v in mine {
+            if merged.len() > 0 and v.at(0) <= merged.last().at(1) + 2 * ha {
+              let m = merged.pop()
+              merged.push((m.at(0), calc.max(m.at(1), v.at(1))))
+            } else { merged.push(v) }
+          }
+          for m in merged {
+            if x.at(str(a)) + ha > m.at(0) and x.at(str(a)) - ha < m.at(1) {
+              let dl = x.at(str(a)) - (m.at(0) - ha)
+              let dr = (m.at(1) + ha) - x.at(str(a))
+              let dir = if dl <= dr { -1 } else { 1 }
+              let c = if dir < 0 { m.at(0) - ha } else { m.at(1) + ha }
+              // Step past already-escaped rank-mates. The collision test
+              // leaves an epsilon of tolerance: a landing computed as exactly
+              // the separation can round a hair short and re-collide with
+              // itself forever. Bounded as a belt — progress is monotone, so
+              // the cap never binds on real input.
+              let bumped = true
+              let tries = 0
+              while bumped and tries < 32 {
+                bumped = false
+                tries += 1
+                for p in esc {
+                  if calc.abs(c - p.c) < ha + p.h + node-gap - 0.001 {
+                    c = p.c + dir * (p.h + ha + node-gap)
+                    bumped = true
+                  }
+                }
+              }
+              x.insert(str(a), c)
+              esc.push((c: c, h: ha))
+              moved = true
+              break
+            }
+          }
+        }
+      }
+    }
+    (x: x, moved: moved)
+  }
+  let reroute = (x, ch) => {
+    let lr = (:)
+    for c in cells {
+      for it in lin.at(str(c.index), default: ()) {
+        lr.insert(str(it.ei), route-long(it.from, c.index, x, w, ch))
+      }
+    }
+    lr
+  }
+  let rf = refine(x, (:))
+  x = rf.x
+  // A shear or escape can stretch a box — corridors chosen against the
+  // pre-move geometry may then land inside a border, so reroute.
+  if rf.moved { lastr = reroute(x, (:)) }
+
+  // Segmented corridors: a long edge whose endpoints share a box must not
+  // route outside it — but its straight corridor can be forced out when no
+  // single column threads every crossed rank inside the band. Such an edge
+  // re-routes rank by rank (a staircase): each crossed rank picks a clear
+  // in-band column — an interior gap, a row edge, an endpoint column, or an
+  // inside-border *channel* — minimising total sideways travel. A channel
+  // column books a lane inside that border; if any were booked, the box
+  // widens by the reserved lanes (`chan`), positions re-relax once against
+  // the wider borders, and the routes are recomputed — one bounded iteration.
+  let chan = (:)
+  let seg-pass = (x, lr, ch) => {
+    let segd = (:)
+    let resv = (:)
+    // Lane counters per box side: the k-th edge to book a side's channel gets
+    // its own column, one lane further in — two edges sharing a side must
+    // never draw on the same line.
+    let ck = (:)
+    let hwof = a => w.at(str(a)) / 2 + mof.at(str(a))
+    for (ei, e) in edges.enumerate() {
+      if e.kind != "long" { continue }
+      let S = shared-box(e.from, e.to)
+      if S == none or S not in live-by-id { continue }
+      let band = gband(live-by-id.at(S), x, w, ch)
+      let r0 = lr.at(str(ei))
+      if r0.cx >= band.lo + 0.01 and r0.cx <= band.hi - 0.01 { continue }
+      let ur = rankof.at(str(e.from))
+      let vr = rankof.at(str(e.to))
+      let span = range(calc.min(ur, vr) + 1, calc.max(ur, vr))
+      if span.len() == 0 { continue }
+      let ux = x.at(str(e.from))
+      let vx = x.at(str(e.to))
+      let chans = (
+        band.lo + group-pad / 2 + ck.at(S + "|l", default: 0) * lane-gap,
+        band.hi - group-pad / 2 - ck.at(S + "|r", default: 0) * lane-gap,
+      )
+      let states = span.map(r => {
+        let row = order-in-rank.at(r)
+        let occ = row.map(a => (
+          x.at(str(a)) - hwof(a) - edge-clearance,
+          x.at(str(a)) + hwof(a) + edge-clearance,
+        ))
+        // Other boxes keep their rules: a box with neither endpoint bans its
+        // whole band at this rank, one with an endpoint only its border lines.
+        for g in live-groups {
+          if g.id == S { continue }
+          let sp2 = gspan.at(g.id)
+          if r < sp2.at(0) or r > sp2.at(1) { continue }
+          let b = gband(g, x, w, ch)
+          if (
+            gp.at(str(e.from), default: ()).contains(g.id)
+              or gp.at(str(e.to), default: ()).contains(g.id)
+          ) {
+            occ.push((b.lo - lane-gap / 2, b.lo + lane-gap / 2))
+            occ.push((b.hi - lane-gap / 2, b.hi + lane-gap / 2))
+          } else {
+            occ.push((b.lo - edge-clearance, b.hi + edge-clearance))
+          }
+        }
+        let clear = c => occ.all(iv => c <= iv.at(0) or c >= iv.at(1))
+        let cands = (ux, vx)
+        for i in range(calc.max(row.len() - 1, 0)) {
+          let lo2 = x.at(str(row.at(i))) + hwof(row.at(i))
+          let hi2 = x.at(str(row.at(i + 1))) - hwof(row.at(i + 1))
+          if hi2 - lo2 >= 2 * edge-clearance { cands.push((lo2 + hi2) / 2) }
+        }
+        if row.len() > 0 {
+          cands.push(
+            calc.min(..row.map(a => x.at(str(a)) - hwof(a))) - edge-clearance,
+          )
+          cands.push(
+            calc.max(..row.map(a => x.at(str(a)) + hwof(a))) + edge-clearance,
+          )
+        }
+        (
+          cands.filter(c => (
+            c >= band.lo + 0.01 and c <= band.hi - 0.01 and clear(c)
+          ))
+            + chans
+        )
+      })
+      // Shortest total sideways travel ux -> columns -> vx (tiny DP).
+      let cost = states.at(0).map(c => calc.abs(c - ux))
+      let back = ()
+      for ri in range(1, states.len()) {
+        let prev = states.at(ri - 1)
+        let nc = ()
+        let bk = ()
+        for c in states.at(ri) {
+          let best = 0
+          let bv = cost.at(0) + calc.abs(c - prev.at(0))
+          for (k, p) in prev.enumerate() {
+            let v = cost.at(k) + calc.abs(c - p)
+            if v < bv - 0.0001 {
+              bv = v
+              best = k
+            }
+          }
+          nc.push(bv)
+          bk.push(best)
+        }
+        cost = nc
+        back.push(bk)
+      }
+      let besti = 0
+      let bestv = cost.at(0) + calc.abs(states.last().at(0) - vx)
+      for (k, c) in states.last().enumerate() {
+        let v = cost.at(k) + calc.abs(c - vx)
+        if v < bestv - 0.0001 {
+          bestv = v
+          besti = k
+        }
+      }
+      let idxs = (besti,)
+      for ri in range(back.len() - 1, -1, step: -1) {
+        idxs.insert(0, back.at(ri).at(idxs.first()))
+      }
+      let cols = idxs.enumerate().map(((ri, k)) => states.at(ri).at(k))
+      let used-l = cols.any(c => calc.abs(c - chans.at(0)) < 0.001)
+      let used-r = cols.any(c => calc.abs(c - chans.at(1)) < 0.001)
+      if used-l or used-r {
+        let cur = resv.at(S, default: (l: 0, r: 0))
+        resv.insert(S, (
+          l: cur.l + if used-l { 1 } else { 0 },
+          r: cur.r + if used-r { 1 } else { 0 },
+        ))
+        if used-l { ck.insert(S + "|l", ck.at(S + "|l", default: 0) + 1) }
+        if used-r { ck.insert(S + "|r", ck.at(S + "|r", default: 0) + 1) }
+      }
+      // Entry steps off the target's direct-input columns, as route-long does.
+      let din-xs = din.at(str(e.to), default: ()).map(s2 => x.at(str(s2)))
+      let entry = cols.last()
+      if din-xs.len() > 0 {
+        let dmin = calc.min(..din-xs)
+        let dmax = calc.max(..din-xs)
+        if entry > dmin - node-gap and entry < dmax + node-gap {
+          entry = if entry <= x.at(str(e.to)) { dmin - node-gap } else {
+            dmax + node-gap
+          }
+        }
+      }
+      segd.insert(str(ei), (cols: cols, entry: entry))
+    }
+    (seg: segd, resv: resv)
+  }
+  let sp = seg-pass(x, lastr, (:))
+  if sp.resv.len() > 0 {
+    chan = sp.resv
+    x = relax(w, cwant-last, chan)
+    let rf2 = refine(x, chan)
+    x = rf2.x
+    lastr = reroute(x, chan)
+    sp = seg-pass(x, lastr, chan)
+  }
+  for (ei, s) in sp.seg {
+    lastr.insert(ei, (
+      ..lastr.at(ei),
+      cx: s.cols.first(),
+      side-ok: false,
+      entry: s.entry,
+      cols: s.cols,
+      last: s.cols.last(),
+    ))
   }
 
   // How many *direct* children each node fans out to. A node with one direct child
@@ -519,17 +1007,18 @@
     for p in px.filter(p => p.x < face-lo or p.x > face-hi) {
       benders.push((kind: "direct", key: str(p.s), cx: p.x))
     }
+    // A segmented route approaches on its *last* column; a straight one on
+    // its single corridor column (last == cx there).
     for e in ins
       .map(it => (it: it, r: lastr.at(str(it.ei))))
-      .sorted(key: e => -calc.abs(e.r.cx - tx)) {
-      let seated = (
-        e.r.cx >= face-lo and e.r.cx <= face-hi and free(e.r.cx, taken)
-      )
+      .sorted(key: e => -calc.abs(e.r.at("last", default: e.r.cx) - tx)) {
+      let rcx = e.r.at("last", default: e.r.cx)
+      let seated = rcx >= face-lo and rcx <= face-hi and free(rcx, taken)
       if seated {
-        taken.push(e.r.cx)
+        taken.push(rcx)
         seated-longs.push((ei: e.it.ei, r: e.r))
       } else {
-        benders.push((kind: "long", ei: e.it.ei, r: e.r, cx: e.r.cx))
+        benders.push((kind: "long", ei: e.it.ei, r: e.r, cx: rcx))
       }
     }
     // The straight landings — on-face parents and seated drops — are fixed;
@@ -604,6 +1093,17 @@
   let gaps = range(ranks).map(r => if r == 0 { 0 } else {
     calc.max(rank-gap, 2 * (stub + traffic.at(r) * lane-gap))
   })
+  // Group borders need vertical room too: the gap above a box's top rank
+  // holds its title band and padding, the gap below its bottom rank its
+  // padding. Nested boxes opening (or closing) at the same rank each add
+  // their own, so their borders stack instead of coinciding. A box whose top
+  // rank is the first extends the canvas upward instead.
+  for g in live-groups {
+    let rs = g.nodes.map(a => rankof.at(str(a)))
+    let (gt, gb) = (calc.min(..rs), calc.max(..rs))
+    if gt > 0 { gaps.at(gt) += title-room + group-pad }
+    if gb + 1 < ranks { gaps.at(gb + 1) += group-pad }
+  }
   let rank-y = (0,)
   for r in range(1, ranks) {
     rank-y.push(
@@ -612,6 +1112,50 @@
   }
   let y = (:)
   for c in cells { y.insert(str(c.index), rank-y.at(c.rank)) }
+
+  // Group hulls: each box wraps its member nodes and child boxes with
+  // `group-pad` of breathing room and a `title-room` band along its top.
+  // Members are declared before their group, so a child's hull always exists
+  // when the parent wraps it — the parent's border sits a pad outside the
+  // child's, and their title bands stack.
+  let hulls = (:)
+  for g in groups {
+    let xs0 = g.nodes.map(a => x.at(str(a)) - w.at(str(a)) / 2)
+    let xs1 = g.nodes.map(a => (
+      x.at(str(a)) + w.at(str(a)) / 2 + loop-room(a)
+    ))
+    let ys0 = g.nodes.map(a => y.at(str(a)) - hof.at(str(a)) / 2)
+    let ys1 = g.nodes.map(a => y.at(str(a)) + hof.at(str(a)) / 2)
+    for m in g.members {
+      if m in hulls {
+        let h = hulls.at(m)
+        xs0.push(h.x0)
+        xs1.push(h.x1)
+        ys0.push(h.y0)
+        ys1.push(h.y1)
+      }
+    }
+    if xs0.len() == 0 { continue }
+    // Reserved routing channels widen the box, exactly as in `gband`.
+    let cc = chan.at(g.id, default: (l: 0, r: 0))
+    let x0 = calc.min(..xs0) - group-pad - cc.l * lane-gap
+    let x1 = calc.max(..xs1) + group-pad + cc.r * lane-gap
+    // A box is never narrower than its title (plus breathing room): a long
+    // name on a small group widens the box instead of overflowing it.
+    let want = g.at("tw", default: 0) + group-pad
+    if x1 - x0 < want {
+      let c = (x0 + x1) / 2
+      x0 = c - want / 2
+      x1 = c + want / 2
+    }
+    hulls.insert(g.id, (
+      x0: x0,
+      x1: x1,
+      y0: calc.min(..ys0) - group-pad,
+      y1: calc.max(..ys1) + group-pad + title-room,
+      depth: g.depth,
+    ))
+  }
 
   // Heights: a seated drop keeps its label run at the gap's midpoint; bent
   // tails fan at fixed pitch — farthest lowest, so nested tails and the
@@ -622,9 +1166,8 @@
     let top = y.at(a.key) + hof.at(a.key) / 2
     for s in a.seated {
       route.insert(str(s.ei), (
-        cx: s.r.cx,
-        side-ok: s.r.side-ok,
-        entry: s.r.cx,
+        ..s.r,
+        entry: s.r.at("last", default: s.r.cx),
         ay: top + gaps.at(a.rank) / 2,
       ))
     }
@@ -639,12 +1182,7 @@
           // Keyed by (from, to): a direct edge is unique per pair here.
           dseat.insert(b.key + ">" + a.key, (x: b.seat, ay: ay))
         } else {
-          route.insert(str(b.ei), (
-            cx: b.r.cx,
-            side-ok: b.r.side-ok,
-            entry: b.seat,
-            ay: ay,
-          ))
+          route.insert(str(b.ei), (..b.r, entry: b.seat, ay: ay))
         }
       }
     }
@@ -664,6 +1202,32 @@
           - gaps.at(rs + 1, default: rank-gap) / 2
       )
       route.insert(str(ei), (..route.at(str(ei)), hy: hy))
+      // A segmented route changes column between ranks: each change becomes a
+      // jog (y, next-column) halfway into the inter-rank gap — the renderer
+      // draws down to y, across to the next column, and continues.
+      let r = route.at(str(ei))
+      if "cols" in r {
+        let span = range(
+          calc.min(rs, rankof.at(str(e.to))) + 1,
+          calc.max(rs, rankof.at(str(e.to))),
+        )
+        let jogs = ()
+        let prev = r.cols.first()
+        for (i, rr) in span.enumerate() {
+          if calc.abs(r.cols.at(i) - prev) > 0.001 {
+            jogs.push((
+              y: (
+                rank-y.at(rr - 1)
+                  - rank-h.at(rr - 1) / 2
+                  - gaps.at(rr, default: rank-gap) / 2
+              ),
+              x: r.cols.at(i),
+            ))
+            prev = r.cols.at(i)
+          }
+        }
+        route.insert(str(ei), (..r, jogs: jogs))
+      }
     }
   }
   // Jogging corridors must not share a lane: where two overlap in x and in the
@@ -677,6 +1241,12 @@
       calc.min(rankof.at(str(e.from)), rankof.at(str(e.to))),
       calc.max(rankof.at(str(e.from)), rankof.at(str(e.to))),
     )
+    // A segmented route was placed rank by rank against real clearances:
+    // register its runs so other corridors keep off, but never shift it.
+    if "cols" in r {
+      for c in r.cols.dedup() { lanes.push((cx: c, span: span)) }
+      continue
+    }
     let seated = calc.abs(r.cx - r.entry) < 0.01
     if seated {
       lanes.push((cx: r.cx, span: span))
@@ -708,6 +1278,7 @@
     route: route,
     dseat: dseat,
     fanout: fanout,
+    hulls: hulls,
     settled: settled,
   )
 }

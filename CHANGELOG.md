@@ -24,6 +24,11 @@ a minor release — each is flagged with a migration note.
 
 - `flowchart`: a `"cylinder"` node shape — useful to visualise a feed, 
   database, or log store. It stays upright in both orientations.
+- `flowchart`: `group(id, [Title], ..members)` draws a titled box around
+  related nodes. `stroke:` is the border style ("dashed" default, "dotted",
+  "solid", or a full Typst stroke); `border-color:` sets the line colour; and
+  `fill:` tints the box — a solid colour is washed to a gentle tint for you.
+  All three are independent.
 - `flowchart`: a self-loop — an `edge` from a node back to itself, such as a
   retry or poll step — now draws as a small loop beside the node. A node can
   have a self-loop and other outgoing edges at once; before, that combination

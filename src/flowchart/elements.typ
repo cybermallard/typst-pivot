@@ -1,5 +1,6 @@
 // Flowchart element constructors. A flowchart is a set of `node`s joined by
-// directed `edge`s; both are passed together in one variadic `flowchart(..)` call
+// directed `edge`s — plus optional `group`s that draw a titled box around
+// related nodes — all passed together in one variadic `flowchart(..)` call
 // and the model sorts them out. A node has an id (referenced by edges), a label
 // (trailing content), a shape, and an opt-in fill. An edge names a source and a
 // target node id and an optional label — a branch condition like "yes" / "no".
@@ -7,6 +8,7 @@
 //
 //   node("q", [Known-bad hash?], shape: "diamond")
 //   edge("q", "block", label: [yes])
+//   group("triage", [Automated triage], "q", "block")
 
 #let node(id, label, shape: "rectangle", fill: none) = (
   kind: "node",
@@ -31,4 +33,35 @@
   to: to,
   label: label,
   label-offset: label-offset,
+)
+
+// A group draws a titled box around its members. Members are node ids — or
+// other group ids, which is how boxes nest (declare the inner group first,
+// then name it in the outer's members). The layout keeps a group's members
+// together and everyone else outside its box; edges simply cross the border.
+//
+// Colour is opt-in and independent: `stroke` is the border *style* ("dashed"
+// default / "dotted" / "solid", or a full Typst stroke); `border-color` sets
+// the border *line* colour; `fill` tints the box — a solid colour is washed
+// to a gentle tint automatically (pass an already-transparent colour to keep
+// exact control). Border colour and fill never imply each other.
+//
+//   group("env", [Secure Agent Environment], "gw", "orch", "fw")
+//   group("gov", [SAIF Governance], "ti", "siem", "env", stroke: "solid")
+//   group("hot", [Untrusted], "net", border-color: red, fill: red)
+#let group(
+  id,
+  title,
+  ..members,
+  stroke: "dashed",
+  border-color: none,
+  fill: none,
+) = (
+  kind: "group",
+  id: id,
+  title: title,
+  members: members.pos(),
+  stroke: stroke,
+  border-color: border-color,
+  fill: fill,
 )

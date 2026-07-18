@@ -19,8 +19,9 @@
   let nodes = graph.nodes
   let edges = graph.edges
   let ids = graph.ids
+  let gpath = graph.at("gpath", default: (:))
   let n = nodes.len()
-  if n == 0 { return (cells: (), edges: (), ranks: 0) }
+  if n == 0 { return (cells: (), edges: (), ranks: 0, groups: ()) }
 
   // --- cycle removal: DFS, mark edges that close back onto the current stack ---
   // Self-loops (a node onto itself — a retry/poll-in-place step) never enter the
@@ -117,12 +118,52 @@
   }
 
   // --- order within ranks: initial declaration order, then barycenter sweeps ---
-  let order-in-rank = range(ranks).map(r => range(n).filter(i => (
-    rank.at(i) == r
-  )))
+  // Grouped nodes start clustered (stable within a cluster), so the sweeps
+  // begin from contiguous blocks; an ungrouped diagram is untouched.
+  let gkey = i => ("",) + gpath.at(str(i), default: ())
+  let order-in-rank = range(ranks).map(r => range(n)
+    .filter(i => rank.at(i) == r)
+    .sorted(key: i => gkey(i).join("/")))
   let posx = (:)
   for r in range(ranks) {
     for (k, i) in order-in-rank.at(r).enumerate() { posx.insert(str(i), k) }
+  }
+  // Group-aware ordering: a rank's units are its loose nodes and the groups
+  // present in it; a group moves as one block keyed by its members' mean
+  // barycenter, recursively for nested groups. A loose node's key is its own
+  // barycenter and a block's members all share the block key, so an outsider
+  // can never interleave a group — same-group nodes stay contiguous in every
+  // rank. With no groups every unit is a lone node and this is exactly the
+  // old flat stable sort.
+  let hsort = (self, its, level) => {
+    let units = ()
+    let bygroup = (:)
+    let gorder = ()
+    for it in its {
+      let p = gpath.at(str(it.i), default: ())
+      if p.len() > level {
+        let gid = p.at(level)
+        if gid not in bygroup { gorder.push(gid) }
+        bygroup.insert(gid, bygroup.at(gid, default: ()) + (it,))
+      } else {
+        units.push((key: it.bc, group: none, items: (it,)))
+      }
+    }
+    for gid in gorder {
+      let gits = bygroup.at(gid)
+      units.push((
+        key: gits.map(x => x.bc).sum() / gits.len(),
+        group: gid,
+        items: gits,
+      ))
+    }
+    let out = ()
+    for u in units.sorted(key: u => u.key) {
+      out += if u.group == none { u.items } else {
+        self(self, u.items, level + 1)
+      }
+    }
+    out
   }
   for iter in range(6) {
     let downward = calc.rem(iter, 2) == 0
@@ -155,7 +196,7 @@
           }
           (i: i, bc: bc)
         })
-      let sorted = scored.sorted(key: s => s.bc)
+      let sorted = hsort(hsort, scored, 0)
       order-in-rank.at(r) = sorted.map(s => s.i)
       for (k, s) in sorted.enumerate() { posx.insert(str(s.i), k) }
     }
@@ -173,7 +214,13 @@
     label: nd.label,
     shape: nd.shape,
     fill: nd.fill,
+    gpath: gpath.at(str(nd.index), default: ()),
   ))
 
-  (cells: out-cells, edges: epaths, ranks: ranks)
+  (
+    cells: out-cells,
+    edges: epaths,
+    ranks: ranks,
+    groups: graph.at("groups", default: ()),
+  )
 }

@@ -40,6 +40,14 @@
   let lane-gap = theme.flowchart-lane-gap / 1cm
   let stub = theme.flowchart-stub / 1cm
   let margin-step = theme.flowchart-margin-step / 1cm
+  let group-pad = theme.flowchart-group-pad / 1cm
+  let title-room = theme.flowchart-group-title-room / 1cm
+  let gtitle-size = theme.flowchart-group-title-size
+  let gtitle-color = theme.flowchart-group-title-color
+  let gstroke-color = theme.flowchart-group-stroke-color
+  let gstroke-width = theme.flowchart-group-stroke-width
+  let gfill-wash = theme.flowchart-group-fill-wash
+  let group-radius = theme.flowchart-group-radius / 1cm
   let edge-width = theme.flowchart-node-edge-width
   let edge-darken = theme.flowchart-node-edge-darken
   let node-outline = theme.flowchart-node-outline
@@ -100,10 +108,17 @@
 
   // Pure placement: spine-aligned positions, merge-widened widths, and each long
   // edge's corridor route (see place.typ).
+  // Each group's measured title width rides along: place treats it as the
+  // box's minimum width, so a long name widens the box instead of overflowing.
+  let ggroups = g.groups.map(gr => (
+    ..gr,
+    tw: measure(text(size: gtitle-size, gr.title)).width / 1cm,
+  ))
   let placed = place(
     sized,
     g.edges,
     g.ranks,
+    groups: ggroups,
     node-gap: node-gap,
     rank-gap: rank-gap,
     pad-x: pad-x,
@@ -114,6 +129,8 @@
     lane-gap: lane-gap,
     stub: stub,
     margin-step: margin-step,
+    group-pad: group-pad,
+    title-room: title-room,
   )
 
   // Final node geometry for the canvas: placement plus each node's label and style.
@@ -134,6 +151,22 @@
   let fanout = placed.fanout
   let route = placed.route
   let dseat = placed.dseat
+  // Group boxes, outermost first (parents draw under their children). In a
+  // horizontal flow the title band grows on the canonical cross-start side —
+  // which maps to the final top, where a title belongs. The canonical-top
+  // band is kept too: it is the box's flow-entry side, and entering arrows
+  // need their heads clear of the border there.
+  let hull-list = g
+    .groups
+    .filter(gr => gr.id in placed.hulls)
+    .map(gr => {
+      let h = placed.hulls.at(gr.id)
+      if orientation == "horizontal" {
+        h = (..h, x0: h.x0 - (title-room - group-pad))
+      }
+      (gr: gr, h: h)
+    })
+    .sorted(key: e => e.h.depth)
 
   cetz.canvas({
     import cetz.draw: *
@@ -379,13 +412,76 @@
       if o == none { (0, 0) } else { (o.at(0) / 1cm, o.at(1) / 1cm) }
     }
 
-    // Diagram extent; back-edges climb a side channel, long edges take a corridor.
-    let min-x = calc.min(..pos.values().map(p => p.x - p.w / 2))
-    let max-x = calc.max(..pos.values().map(p => p.x + p.w / 2))
+    // Diagram extent; back-edges climb a side channel, long edges take a
+    // corridor. Group boxes count: a channel must clear their borders too.
+    let min-x = calc.min(
+      ..pos.values().map(p => p.x - p.w / 2),
+      ..hull-list.map(e => e.h.x0),
+    )
+    let max-x = calc.max(
+      ..pos.values().map(p => p.x + p.w / 2),
+      ..hull-list.map(e => e.h.x1),
+    )
     let center-x = (min-x + max-x) / 2
     let left-i = 0
     let right-i = 0
 
+    // Group boxes first — under every line and node — outermost to innermost,
+    // then their titles (after all the rects, so a child's fill can't cover a
+    // parent's title). A title sits inside the box's final-space top-left.
+    // A keyword style draws in `bcolor` (the group's border-color) or the
+    // theme default; a full Typst stroke carries its own paint and passes
+    // through (model forbids pairing it with border-color).
+    let gstroke = (s, bcolor) => {
+      let paint = if bcolor == none { gstroke-color } else { bcolor }
+      if s == "solid" {
+        gstroke-width + paint
+      } else if s in ("dashed", "dotted") {
+        (paint: paint, thickness: gstroke-width, dash: s)
+      } else { s }
+    }
+    // A solid group fill is washed to a gentle tint; a colour that already
+    // carries transparency is the author's exact choice, left untouched.
+    let gtint = f => if f == none { none } else if (
+      type(f) == color and rgb(f).components().last() >= 99%
+    ) { f.transparentize(gfill-wash) } else { f }
+    let title-items = ()
+    for e in hull-list {
+      let h = e.h
+      rect(
+        map((h.x0, h.y0)),
+        map((h.x1, h.y1)),
+        radius: group-radius,
+        stroke: gstroke(e.gr.stroke, e.gr.at("border-color", default: none)),
+        fill: gtint(e.gr.fill),
+      )
+      let (ax, ay) = map((h.x0, h.y0))
+      let (bx, by) = map((h.x1, h.y1))
+      // Titles are placed after the edges are drawn (see below), so they can
+      // slide clear of any line crossing the top band; collect the band now.
+      let body = text(size: gtitle-size, fill: gtitle-color, e.gr.title)
+      let m = measure(body)
+      title-items.push((
+        lo: calc.min(ax, bx),
+        hi: calc.max(ax, bx),
+        top: calc.max(ay, by),
+        body: body,
+        hw: m.width / 2cm,
+        hh: m.height / 2cm,
+      ))
+      // Border segments join the label obstacles (tagged with no real edge,
+      // so no label is exempt): a label must never knock a gap out of a box.
+      let (x0, x1) = (calc.min(ax, bx), calc.max(ax, bx))
+      let (y0, y1) = (calc.min(ay, by), calc.max(ay, by))
+      let (cx, cy) = ((x0 + x1) / 2, (y0 + y1) / 2)
+      let (hw, hh) = ((x1 - x0) / 2, (y1 - y0) / 2)
+      edge-lines += (
+        (edge: -1, box: (cx, y0, hw, 0)),
+        (edge: -1, box: (cx, y1, hw, 0)),
+        (edge: -1, box: (x0, cy, 0, hh)),
+        (edge: -1, box: (x1, cy, 0, hh)),
+      )
+    }
     // Edges first, so nodes sit over the line ends.
     for (ei, e) in g.edges.enumerate() {
       let s = pos.at(str(e.from))
@@ -543,7 +639,16 @@
           let dy = r.hy
           ((s.x, s.y - s.h / 2), (s.x, dy), (cx, dy))
         }
-        let pts = head + ((cx, ay), (entry.at(0), ay), entry)
+        // A segmented route steps between columns mid-descent: down to each
+        // jog's height, across to its next column, and on. A straight route
+        // has no jogs and this adds nothing.
+        let px = cx
+        let mids = ()
+        for j in r.at("jogs", default: ()) {
+          mids += ((px, j.y), (j.x, j.y))
+          px = j.x
+        }
+        let pts = head + mids + ((px, ay), (entry.at(0), ay), entry)
         line(
           ..pts.map(map),
           stroke: edge-stroke,
@@ -560,19 +665,58 @@
       }
     }
 
+    // Group titles now, with every line known: a title prefers its box's top
+    // centre but slides along the band to a spot no edge crosses — an edge
+    // entering through the top border would otherwise strike straight through
+    // the name. Placed titles are obstacles for each other and for the edge
+    // labels below.
+    let titles = ()
+    let thit = (a, b) => (
+      calc.abs(a.at(0) - b.at(0)) < a.at(2) + b.at(2)
+        and calc.abs(a.at(1) - b.at(1)) < a.at(3) + b.at(3)
+    )
+    for t in title-items {
+      let cy = t.top - group-pad / 2 - t.hh
+      let spot = none
+      for f in (0.5, 0.35, 0.65, 0.2, 0.8, 0.12, 0.88) {
+        if spot != none { break }
+        let cx = calc.max(
+          t.lo + t.hw,
+          calc.min(t.hi - t.hw, t.lo + (t.hi - t.lo) * f),
+        )
+        let r = (cx, cy, t.hw + group-pad / 4, t.hh + group-pad / 4)
+        if (
+          edge-lines.all(q => not thit(r, q.box))
+            and titles.all(q => not thit(r, q.box))
+        ) { spot = (cx, cy) }
+      }
+      if spot == none { spot = ((t.lo + t.hi) / 2, cy) }
+      titles.push((
+        pos: spot,
+        body: t.body,
+        box: (spot.at(0), spot.at(1), t.hw, t.hh),
+      ))
+    }
+    for t in titles { content(t.pos, t.body) }
+
     // Labels next, over every line at once: anchors solved together so labels
     // dodge each other and the node boxes (see label-spots).
-    let boxes = pos
-      .values()
-      .map(p => {
-        let (fx, fy) = map((p.x, p.y))
-        let (hw, hh) = if orientation == "horizontal" {
-          (p.h / 2, p.w / 2)
-        } else {
-          (p.w / 2, p.h / 2)
-        }
-        (fx, fy, hw, hh)
-      })
+    let boxes = (
+      pos
+        .values()
+        .map(p => {
+          let (fx, fy) = map((p.x, p.y))
+          let (hw, hh) = if orientation == "horizontal" {
+            (p.h / 2, p.w / 2)
+          } else {
+            (p.w / 2, p.h / 2)
+          }
+          (fx, fy, hw, hh)
+        })
+        // Group titles are obstacles too: a label may sit inside a box, but
+        // not on its title.
+        + titles.map(t => t.box)
+    )
     let spots = label-spots(labelled, boxes, edge-lines, head-room: stub)
     for (i, it) in labelled.enumerate() {
       content(spots.at(i), it.body)

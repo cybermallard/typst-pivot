@@ -1,4 +1,4 @@
-#import "/src/flowchart/elements.typ": edge, node
+#import "/src/flowchart/elements.typ": edge, group, node
 #import "/src/flowchart/model.typ": model
 #import "/src/flowchart/layout.typ": layout
 
@@ -61,3 +61,48 @@
 #assert.eq(g3.ranks, 2)
 #assert.eq(g3.cells.map(c => c.rank), (0, 1))
 #assert.eq(g3.edges.map(e => e.kind), ("self", "direct"))
+
+// Groups: the model resolves nesting (paths, depths, transitive members) and
+// the ordering keeps a group's members contiguous in every rank, even when an
+// outsider's neighbours would pull it between them. A(2) and B(4) share a
+// group; their rank-1 barycenters interleave with loose L(3), yet they must
+// end up adjacent.
+#let g4 = layout(model((
+  node("p1", [P1]),
+  node("p2", [P2]),
+  node("p3", [P3]),
+  node("p4", [P4]),
+  node("s", [S]),
+  node("A", [A]),
+  node("L", [L]),
+  node("B", [B]),
+  node("R", [R]),
+  edge("s", "p1"),
+  edge("s", "p2"),
+  edge("s", "p3"),
+  edge("s", "p4"),
+  edge("p1", "A"),
+  edge("p2", "L"),
+  edge("p3", "B"),
+  edge("p4", "R"),
+  group("inner", [Inner], "A", "B", border-color: red),
+  group("outer", [Outer], "inner", "L"),
+)))
+#let cell = id => g4.cells.find(c => c.id == id)
+#assert.eq(cell("A").gpath, ("outer", "inner"))
+#assert.eq(cell("L").gpath, ("outer",))
+#assert.eq(cell("R").gpath, ())
+#assert.eq(g4.groups.find(g => g.id == "inner").depth, 1)
+#assert.eq(g4.groups.find(g => g.id == "outer").depth, 0)
+// Style carries through the model unchanged; an unset border-color is `none`.
+#assert.eq(g4.groups.find(g => g.id == "inner").border-color, red)
+#assert.eq(g4.groups.find(g => g.id == "outer").border-color, none)
+#assert.eq(
+  g4.groups.find(g => g.id == "outer").nodes.len(),
+  3, // A, B and L — transitive through `inner`
+)
+#assert.eq(
+  calc.abs(cell("A").order - cell("B").order),
+  1,
+  message: "grouped nodes A and B were not contiguous in their rank",
+)

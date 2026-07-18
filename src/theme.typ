@@ -94,6 +94,14 @@
   flowchart-lane-gap: 0.45cm, // spacing between parallel edge lanes (corridors and fanned approach tails)
   flowchart-stub: 0.6cm, // minimum straight run at an edge's final drop into its seat — must comfortably exceed the arrowhead (~0.25cm at the default arrow-scale) so a bend never sits inside the head
   flowchart-margin-step: 0.35cm, // automatic breathing room: packing clearance a node gains per edge beyond its second
+  flowchart-group-pad: 0.35cm, // breathing room between a group's border and what it wraps
+  flowchart-group-title-room: 0.55cm, // band inside a group's top edge holding its title
+  flowchart-group-title-size: 9pt, // group title text
+  flowchart-group-title-color: luma(30%), // group title
+  flowchart-group-stroke-color: luma(45%), // group border colour (keyword strokes, no border-color)
+  flowchart-group-stroke-width: 0.8pt, // group border weight
+  flowchart-group-fill-wash: 85%, // a solid group fill is tinted to this transparency (a gentle wash)
+  flowchart-group-radius: 0cm, // group box corner radius
   flowchart-node-edge-width: 1.1pt, // node border weight (matches timeline marker rim)
   flowchart-node-edge-darken: 40%, // filled node: border = the fill darkened by this
   flowchart-node-outline: luma(25%), // unfilled node: border colour
