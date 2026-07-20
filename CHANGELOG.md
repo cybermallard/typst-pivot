@@ -63,6 +63,9 @@ a minor release — each is flagged with a migration note.
   to more distant steps (a feed off to the side, say) could make the whole
   diagram grow wider and wider without ever reaching a stable layout. Such a
   node now stays put, and the diagram lays out normally.
+  - `flowchart`: several arrows leaving one node could all depart from the
+  same point, showing as one line until they diverged. Each now leaves from
+  its own point on the node, spaced from the rest.
 
 ## [0.2.0] - 2026-07-05
 

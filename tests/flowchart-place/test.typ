@@ -62,15 +62,18 @@
     }
   }
   // A direct parent's landing mirrors the placement model: its seat if it has
-  // one, else its projected entry (spread exit toward the target when the
-  // parent forks, clamped to 0.7 of its half-width).
+  // one, else its allocated exit column (several departures), else its
+  // projected entry (spread exit toward the target when the parent forks,
+  // clamped to 0.7 of its half-width).
   let landing = (s, k) => {
     let seat = p.dseat.at(str(s) + ">" + k, default: none)
     if seat != none { seat.x } else {
-      let sx = p.x.at(str(s))
-      let aim = if fano.at(str(s), default: 0) == 1 { sx } else { p.x.at(k) }
-      let half = 0.7 * p.w.at(str(s)) / 2
-      sx + calc.max(calc.min(aim - sx, half), -half)
+      p.dexit.at(str(s) + ">" + k, default: {
+        let sx = p.x.at(str(s))
+        let aim = if fano.at(str(s), default: 0) == 1 { sx } else { p.x.at(k) }
+        let half = 0.7 * p.w.at(str(s)) / 2
+        sx + calc.max(calc.min(aim - sx, half), -half)
+      })
     }
   }
   // The face inset mirrors placement: pad-x, capped at a quarter extent so a
@@ -670,6 +673,78 @@
   message: "narrow face stacked its two arrows",
 )
 
+// --- exit allocation: several departures leave at distinct points -------------
+// The feed shape (one direct child plus two long corridors from one source):
+// without allocation, a lone direct edge and every long edge all exit at the
+// node's centre and draw as one line until they diverge. Each must get its own
+// exit column on the face, a pitch apart, and the two corridors must fan at
+// distinct heights below the node so their horizontal runs never overlie.
+#let exf = layout(model((
+  node("s", [S]),
+  node("a", [A]),
+  node("c", [C]),
+  node("d", [D]),
+  edge("s", "a"),
+  edge("a", "c"),
+  edge("a", "d"),
+  edge("s", "c"), // rank 0 -> 2: long
+  edge("s", "d"), // rank 0 -> 2: long
+)))
+#assert.eq(exf.edges.slice(3).map(e => e.kind), ("long", "long"))
+#let exf-p = placed(exf)
+#let exf-exits = (
+  exf-p.dexit.at("0>1"),
+  exf-p.route.at("3").exit,
+  exf-p.route.at("4").exit,
+)
+// The allocation's own pitch and face bounds, from the same tokens.
+#let ex-pitch = calc.min(tok.node-gap / 2, (3.0 - 2 * tok.pad-x) / 4)
+#let ex-check(p, exits, msg) = {
+  for i in range(exits.len()) {
+    for j in range(i + 1, exits.len()) {
+      assert(
+        calc.abs(exits.at(i) - exits.at(j)) >= ex-pitch - 0.01,
+        message: msg + ": exits " + str(i) + "," + str(j) + " collide",
+      )
+    }
+    assert(
+      calc.abs(exits.at(i) - p.x.at("0")) <= 3.0 / 2 - tok.pad-x + 0.01,
+      message: msg + ": exit " + str(i) + " left the source face",
+    )
+  }
+}
+#ex-check(exf-p, exf-exits, "feed")
+#assert(
+  calc.abs(exf-p.route.at("3").hy - exf-p.route.at("4").hy)
+    >= tok.lane-gap - 0.01,
+  message: "long departures share a horizontal height",
+)
+
+// The firewall shape (two directs plus a long): spread direct exits used to
+// saturate at the same 0.7-clamp flank for far same-side targets, and the
+// long still left at the centre. All three must depart apart.
+#let exw = layout(model((
+  node("s", [S]),
+  node("t1", [T1]),
+  node("t2", [T2]),
+  node("z", [Z]),
+  edge("s", "t1"),
+  edge("s", "t2"),
+  edge("t1", "z"),
+  edge("s", "z"), // rank 0 -> 2: long
+)))
+#assert.eq(exw.edges.last().kind, "long")
+#let exw-p = placed(exw)
+#ex-check(
+  exw-p,
+  (
+    exw-p.dexit.at("0>1"),
+    exw-p.dexit.at("0>2"),
+    exw-p.route.at("3").exit,
+  ),
+  "firewall",
+)
+
 // --- groups: hulls wrap members, outsiders stay out, corridors detour ----------
 // A nested pair (inner ⊂ outer) plus an outsider whose parent sits in the
 // group — packing wants it inside the band — and a long edge with no business
@@ -890,8 +965,7 @@
 // The box grew by the reserved channel lane on one side: its width exceeds
 // the wide member plus pads by at least a lane.
 #assert(
-  chanbox-h.x1 - chanbox-h.x0
-    >= 9.0 + 2 * tok.group-pad + tok.lane-gap - 0.01,
+  chanbox-h.x1 - chanbox-h.x0 >= 9.0 + 2 * tok.group-pad + tok.lane-gap - 0.01,
   message: "box did not widen for its reserved channel",
 )
 

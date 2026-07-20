@@ -151,6 +151,7 @@
   let fanout = placed.fanout
   let route = placed.route
   let dseat = placed.dseat
+  let dexit = placed.dexit
   // Group boxes, outermost first (parents draw under their children). In a
   // horizontal flow the title band grows on the canonical cross-start side —
   // which maps to the final top, where a title belongs. The canonical-top
@@ -517,17 +518,20 @@
             (exit, (out, s.y), (out, clear-y), (entry.at(0), clear-y), entry)
           }
         } else {
-          // Leave at the source's x (a multi-output node spreads toward each target)
-          // and run straight into the target's flow-entry face; bend only if the
-          // source overhangs the target. The 0.7 spread must match place's
-          // projected-landing factor (place.typ, `let half = 0.7 * ..`) so the
-          // exit lands exactly on the seat place allocated for it.
-          let exit = attach(
-            s,
-            if fanout.at(str(e.from), default: 0) == 1 { s.x } else { t.x },
-            false,
-            0.7,
-          )
+          // Leave at the edge's own exit column — allocated by place when the
+          // source has several departures, else the spread aim (the 0.7
+          // matches place's projected-landing factor) — and run straight into
+          // the target's flow-entry face; bend only if the source overhangs
+          // the target.
+          let dx2 = dexit.at(str(e.from) + ">" + str(e.to), default: none)
+          let exit = if dx2 != none { attach(s, dx2, false, 1.0) } else {
+            attach(
+              s,
+              if fanout.at(str(e.from), default: 0) == 1 { s.x } else { t.x },
+              false,
+              0.7,
+            )
+          }
           // A parent the widen caps left off the target's face bends into its
           // allocated seat: down to its fanned approach height, across, in.
           let ds = dseat.at(str(e.from) + ">" + str(e.to), default: none)
@@ -637,7 +641,8 @@
           ((sx, s.y), (cx, s.y))
         } else {
           let dy = r.hy
-          ((s.x, s.y - s.h / 2), (s.x, dy), (cx, dy))
+          let ex = r.at("exit", default: s.x)
+          ((ex, s.y - s.h / 2), (ex, dy), (cx, dy))
         }
         // A segmented route steps between columns mid-descent: down to each
         // jog's height, across to its next column, and on. A straight route

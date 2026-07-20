@@ -943,6 +943,64 @@
     }
   }
 
+  // Exit allocation — the mirror of the entry seats. A node with several
+  // bottom-leaving edges gives each its own exit column on its flow face:
+  // otherwise a lone direct edge and every long edge depart at the node's
+  // centre (and spread exits saturate at the same flank for two far same-side
+  // targets), drawing several edges as one line until they diverge. Natural
+  // exits aim at each edge's outgoing direction; where they crowd, a
+  // forward/backward min-pitch pass separates them in direction order, so
+  // edges never cross at the node. Single-exit nodes keep today's behaviour.
+  let dexit = (:)
+  for c in cells {
+    let key = str(c.index)
+    let outs = ()
+    for (ei, e) in edges.enumerate() {
+      if str(e.from) != key { continue }
+      if e.kind == "direct" {
+        outs.push((kind: "d", key: key + ">" + str(e.to), aim: x.at(str(e.to))))
+      } else if e.kind == "long" {
+        let r = lastr.at(str(ei))
+        if not r.side-ok {
+          outs.push((
+            kind: "l",
+            ei: ei,
+            aim: r.at("cols", default: (r.cx,)).first(),
+          ))
+        }
+      }
+    }
+    if outs.len() < 2 { continue }
+    let sx = x.at(key)
+    let sw = w.at(key)
+    let inset = calc.min(pad-x, sw / 4)
+    let (lo, hi) = (sx - sw / 2 + inset, sx + sw / 2 - inset)
+    let half = 0.7 * sw / 2
+    let ordered = outs.sorted(key: o => o.aim)
+    let n = ordered.len()
+    let pitch = calc.min(node-gap / 2, (hi - lo) / (n + 1))
+    // Natural spread exits, then enforce the pitch left-to-right and cap the
+    // overflow back from the right face edge — order preserved, every pair
+    // at least a pitch apart, all on the face.
+    let exs = ordered.map(o => (
+      calc.max(lo, calc.min(
+        hi,
+        sx + calc.max(calc.min(o.aim - sx, half), -half),
+      ))
+    ))
+    for i in range(1, n) {
+      exs.at(i) = calc.max(exs.at(i), exs.at(i - 1) + pitch)
+    }
+    for i in range(n - 1, -1, step: -1) {
+      exs.at(i) = calc.min(exs.at(i), hi - (n - 1 - i) * pitch)
+    }
+    for (i, o) in ordered.enumerate() {
+      if o.kind == "d" { dexit.insert(o.key, exs.at(i)) } else {
+        lastr.insert(str(o.ei), (..lastr.at(str(o.ei)), exit: exs.at(i)))
+      }
+    }
+  }
+
   // Per-target seat and route bookkeeping the per-edge router can't do. Direct
   // parents on the face own their columns; a direct parent the widen caps left
   // outside the face gets a *seat* allocated inward from its side's face edge
@@ -978,12 +1036,15 @@
     // far input.
     let px = d.map(s => {
       let sx = x.at(str(s))
-      let aim = if fanout.at(str(s), default: 0) == 1 { sx } else { tx }
-      // The 0.7 fan-spread must match render's `attach(s, .., 0.7)` exit, or a
-      // parent's drawn arrow leaves its source at a different x than the seat
-      // allocated here — keep the two in step (render.typ, direct-edge branch).
-      let half = 0.7 * w.at(str(s)) / 2
-      let land = sx + calc.max(calc.min(aim - sx, half), -half)
+      // A parent's arrow lands where its exit column meets this face: the
+      // allocated exit when the source has several departures, else the
+      // spread aim (the 0.7 matches render's `attach(s, .., 0.7)` — keep the
+      // two in step, render.typ direct-edge branch).
+      let land = dexit.at(str(s) + ">" + str(c.index), default: {
+        let aim = if fanout.at(str(s), default: 0) == 1 { sx } else { tx }
+        let half = 0.7 * w.at(str(s)) / 2
+        sx + calc.max(calc.min(aim - sx, half), -half)
+      })
       (s: s, x: land)
     })
     let taken = px.filter(p => p.x >= face-lo and p.x <= face-hi).map(p => p.x)
@@ -1090,6 +1151,22 @@
       traffic.at(a.rank) = calc.max(traffic.at(a.rank), n)
     }
   }
+  // Exit fans need room too: a node's several long departures fan at
+  // lane-gap pitch in the gap beneath its rank (see the hy fan below).
+  let exit-fan = (:)
+  for (ei, e) in edges.enumerate() {
+    if (
+      e.kind == "long" and str(ei) in lastr and not lastr.at(str(ei)).side-ok
+    ) {
+      exit-fan.insert(str(e.from), exit-fan.at(str(e.from), default: 0) + 1)
+    }
+  }
+  for (k, n) in exit-fan {
+    let below = rankof.at(k) + 1
+    if n >= 2 and below < ranks {
+      traffic.at(below) = calc.max(traffic.at(below), n)
+    }
+  }
   let gaps = range(ranks).map(r => if r == 0 { 0 } else {
     calc.max(rank-gap, 2 * (stub + traffic.at(r) * lane-gap))
   })
@@ -1188,18 +1265,43 @@
     }
   }
   // Every long edge also carries its head clearance: the y its corridor may
-  // drop to below the source before jogging across, half-way into the gap
-  // beneath the source's rank.
+  // drop to below the source before jogging across — half-way into the gap
+  // beneath the source's rank, or, when a node has several long departures,
+  // its own height in a fan below the node (farthest corridor jogging first,
+  // like the entry tails) so their horizontal runs never overlie.
+  let exit-rank = (:)
+  for (ei, e) in edges.enumerate() {
+    if e.kind == "long" and str(ei) in route and not route.at(str(ei)).side-ok {
+      let r = route.at(str(ei))
+      let ex = r.at("exit", default: x.at(str(e.from)))
+      exit-rank.insert(
+        str(e.from),
+        exit-rank.at(str(e.from), default: ())
+          + ((ei: ei, dist: calc.abs(r.cx - ex)),),
+      )
+    }
+  }
+  let hy-of = (:)
+  for (k, fans) in exit-rank {
+    if fans.len() < 2 { continue }
+    let bottom = y.at(k) - hof.at(k) / 2
+    for (i, f) in fans.sorted(key: f => -f.dist).enumerate() {
+      hy-of.insert(str(f.ei), bottom - stub - i * lane-gap)
+    }
+  }
   for (ei, e) in edges.enumerate() {
     if e.kind == "long" and str(ei) in route {
       let rs = rankof.at(str(e.from))
       // A long edge always descends, so its source is never the last rank and
       // `rs + 1` is in range; `default` degrades a mis-ranked edge to a plain
       // drop instead of crashing, rather than trusting that invariant blindly.
-      let hy = (
-        y.at(str(e.from))
-          - hof.at(str(e.from)) / 2
-          - gaps.at(rs + 1, default: rank-gap) / 2
+      let hy = hy-of.at(
+        str(ei),
+        default: (
+          y.at(str(e.from))
+            - hof.at(str(e.from)) / 2
+            - gaps.at(rs + 1, default: rank-gap) / 2
+        ),
       )
       route.insert(str(ei), (..route.at(str(ei)), hy: hy))
       // A segmented route changes column between ranks: each change becomes a
@@ -1277,6 +1379,7 @@
     w: w,
     route: route,
     dseat: dseat,
+    dexit: dexit,
     fanout: fanout,
     hulls: hulls,
     settled: settled,
