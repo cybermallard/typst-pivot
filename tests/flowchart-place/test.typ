@@ -2,6 +2,7 @@
 #import "/src/flowchart/model.typ": model
 #import "/src/flowchart/layout.typ": layout
 #import "/src/flowchart/place.typ": label-spots, place
+#import "/src/flowchart/crossing.typ": count-crossings
 
 // Placement is pure math over measured sizes, so it is asserted numerically:
 // fabricated sizes stand in for label measurement and make every check
@@ -557,14 +558,20 @@
     <= 0.001,
   message: "untrafficked gap changed",
 )
-#let off-nmax = calc.max(
-  off-benders.filter(b => b.side).len(),
-  off-benders.filter(b => not b.side).len(),
-)
+// The gap holds one track per bent tail: at least a stub at both faces and a
+// lane between neighbours — and no two tails may share a height.
 #assert(
-  gap-above(2) >= 2 * (tok.stub + off-nmax * tok.lane-gap) - 0.001,
-  message: "trafficked gap did not grow for its fan",
+  gap-above(2) >= 2 * tok.stub + (off-tails.len() - 1) * tok.lane-gap - 0.001,
+  message: "trafficked gap did not grow for its tracks",
 )
+#for i in range(off-tails.len()) {
+  for j in range(i + 1, off-tails.len()) {
+    assert(
+      calc.abs(off-tails.at(i) - off-tails.at(j)) >= tok.lane-gap - 0.001,
+      message: "two bent tails share a height in one gap",
+    )
+  }
+}
 
 // --- crowded face: landings never coincide ------------------------------------
 // Six parents into one target whose widening is capped tight (max-reach 1.2 →
@@ -744,6 +751,77 @@
   ),
   "firewall",
 )
+
+// --- crossing-aware routing: the cloud-deployment shape ------------------------
+// One source forks to three near targets and drops a long edge two ranks down
+// to a far store. Routed blind (each formula alone), the long edge's corridor
+// pierced the email-bender's sideways run and its head jog was pierced by the
+// bender's drop — two avoidable crossings, the user-reported shape. The
+// corridor sweep and the per-gap track allocator must plan zero. Diagrams that
+// are already crossing-free never move (the sweep exits on a zero score, and
+// candidate ties keep the legacy pick) — pinned by every other case in this
+// file holding its positions.
+#let cloud = layout(model((
+  node("ing", [I]),
+  node("app", [A]),
+  node("email", [E]),
+  node("batch", [J]),
+  node("redis", [R]),
+  node("pg", [P]),
+  edge("ing", "app"),
+  edge("app", "email"),
+  edge("app", "batch"),
+  edge("app", "redis"),
+  edge("app", "pg"), // rank 1 -> 3: long
+  edge("batch", "pg"),
+  edge("redis", "pg"),
+)))
+#assert.eq(cloud.edges.at(4).kind, "long")
+#let cloud-p = place(
+  sizes(cloud),
+  cloud.edges,
+  cloud.ranks,
+  node-gap: 1.0, // wide rows: the interior gaps become corridor candidates
+  rank-gap: tok.rank-gap,
+  pad-x: tok.pad-x,
+  back-margin: tok.back-margin,
+  max-reach: tok.max-reach,
+  widen-skew: tok.widen-skew,
+  edge-clearance: tok.edge-clearance,
+  lane-gap: tok.lane-gap,
+  stub: tok.stub,
+  margin-step: tok.margin-step,
+  group-pad: tok.group-pad,
+  title-room: tok.title-room,
+)
+#assert.eq(
+  count-crossings(cloud-p.plan.values()),
+  0,
+  message: "the cloud shape still plans a crossing",
+)
+// The resolution must be one the engine owns: the corridor moved out of the
+// bender's span, or the bender's run was stacked above the head jog.
+#let cloud-r = cloud-p.route.at("4")
+#if "1>2" in cloud-p.dseat {
+  let ds = cloud-p.dseat.at("1>2")
+  let eex = cloud-p.dexit.at("1>2")
+  let (lo, hi) = (calc.min(ds.x, eex), calc.max(ds.x, eex))
+  assert(
+    cloud-r.cx <= lo + 0.01
+      or cloud-r.cx >= hi - 0.01
+      or ds.ay > cloud-r.hy + 0.01,
+    message: "neither the sweep nor the allocator resolved the cloud crossing",
+  )
+  // Band fit: allocated heights keep a stub-length straight at both faces.
+  let btop = cloud-p.y.at("1") - 0.5
+  let bbot = cloud-p.y.at("2") + 0.5
+  for h in (ds.ay, cloud-r.hy) {
+    assert(
+      h <= btop - tok.stub + 0.001 and h >= bbot + tok.stub - 0.001,
+      message: "a track sits closer than a stub to a rank face",
+    )
+  }
+}
 
 // --- groups: hulls wrap members, outsiders stay out, corridors detour ----------
 // A nested pair (inner ⊂ outer) plus an outsider whose parent sits in the

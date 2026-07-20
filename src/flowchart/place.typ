@@ -18,6 +18,8 @@
 // fixed point within the bound. If it didn't, widths may under-span their inputs;
 // the renderer's shape-aware attach still lands every edge on an outline.
 
+#import "crossing.typ": order-tracks, pair-cost
+
 #let place(
   cells,
   edges,
@@ -53,13 +55,18 @@
     assert(v != none, message: "place: `" + name + "` is required")
   }
   if cells.len() == 0 {
+    // The same contract as the main return: a caller reading any field must
+    // never find it missing on the empty diagram.
     return (
       x: (:),
       y: (:),
       w: (:),
       route: (:),
+      dseat: (:),
+      dexit: (:),
       fanout: (:),
       hulls: (:),
+      plan: (:),
       settled: true,
     )
   }
@@ -333,16 +340,18 @@
     rankof.insert(str(c.index), c.rank)
   }
 
-  // The clearest vertical corridor for a long edge u -> v under the current widths:
-  // the candidate x that no node in the crossed ranks blocks, chosen closest to the
-  // source's own column so the edge drops straight when that column is clear (and
-  // only jogs when it isn't). Candidates are the endpoints (or, for a side exit, the
-  // source's flanks), the gaps just outside each crossed rank, and just outside the
-  // diagram — the last is always clear, so a corridor always exists. With `side-exit`
-  // (a decision leaving by a side vertex) the corridor must sit outside the source,
-  // its run at u.y clear of u's rank-mates; returns none if none does (caller falls
-  // back to a bottom exit).
-  let corridor = (ui, vi, side-exit, prefer-target, x, w, ch) => {
+  // Every workable vertical corridor for a long edge u -> v under the current
+  // widths, best first: the candidate x's that no node in the crossed ranks
+  // blocks, ordered closest to the source's own column so the edge drops
+  // straight when that column is clear (and only jogs when it isn't).
+  // Candidates are the endpoints (or, for a side exit, the source's flanks),
+  // the gaps just outside each crossed rank, and just outside the diagram —
+  // the last is always clear, so a corridor always exists. With `side-exit`
+  // (a decision leaving by a side vertex) the corridor must sit outside the
+  // source, its run at u.y clear of u's rank-mates; the list is empty if none
+  // does (caller falls back to a bottom exit). The crossing sweep re-scores
+  // this same list later, so anything it picks satisfies the same clearances.
+  let corridor-cands = (ui, vi, side-exit, prefer-target, x, w, ch) => {
     let ur = rankof.at(str(ui))
     let vr = rankof.at(str(vi))
     let ux = x.at(str(ui))
@@ -446,7 +455,24 @@
       } else {
         (calc.abs(ux - c), calc.abs(c - vx))
       })
-      .at(0, default: none)
+  }
+  let corridor = (ui, vi, side-exit, prefer-target, x, w, ch) => (
+    corridor-cands(ui, vi, side-exit, prefer-target, x, w, ch).at(
+      0,
+      default: none,
+    )
+  )
+
+  // A long edge's entry steps just outside the target's direct-input columns
+  // when its approach would crowd them, on whichever side it comes from.
+  let step-entry = (entry, to, x) => {
+    let din-xs = din.at(str(to), default: ()).map(s => x.at(str(s)))
+    if din-xs.len() == 0 { return entry }
+    let dmin = calc.min(..din-xs)
+    let dmax = calc.max(..din-xs)
+    if entry > dmin - node-gap and entry < dmax + node-gap {
+      if entry <= x.at(str(to)) { dmin - node-gap } else { dmax + node-gap }
+    } else { entry }
   }
 
   // A long edge's route under the current widths: the corridor x, whether a decision
@@ -466,18 +492,7 @@
       cx = x.at(str(to))
       side-ok = false
     }
-    let din-xs = din.at(str(to), default: ()).map(s => x.at(str(s)))
-    let entry = cx
-    if din-xs.len() > 0 {
-      let dmin = calc.min(..din-xs)
-      let dmax = calc.max(..din-xs)
-      if entry > dmin - node-gap and entry < dmax + node-gap {
-        entry = if entry <= x.at(str(to)) { dmin - node-gap } else {
-          dmax + node-gap
-        }
-      }
-    }
-    (cx: cx, side-ok: side-ok, entry: entry)
+    (cx: cx, side-ok: side-ok, entry: step-entry(cx, to, x))
   }
 
   // Widths may grow: relax, then widen each node to span its merging direct inputs
@@ -898,18 +913,10 @@
         if used-r { ck.insert(S + "|r", ck.at(S + "|r", default: 0) + 1) }
       }
       // Entry steps off the target's direct-input columns, as route-long does.
-      let din-xs = din.at(str(e.to), default: ()).map(s2 => x.at(str(s2)))
-      let entry = cols.last()
-      if din-xs.len() > 0 {
-        let dmin = calc.min(..din-xs)
-        let dmax = calc.max(..din-xs)
-        if entry > dmin - node-gap and entry < dmax + node-gap {
-          entry = if entry <= x.at(str(e.to)) { dmin - node-gap } else {
-            dmax + node-gap
-          }
-        }
-      }
-      segd.insert(str(ei), (cols: cols, entry: entry))
+      segd.insert(str(ei), (
+        cols: cols,
+        entry: step-entry(cols.last(), e.to, x),
+      ))
     }
     (seg: segd, resv: resv)
   }
@@ -951,55 +958,76 @@
   // exits aim at each edge's outgoing direction; where they crowd, a
   // forward/backward min-pitch pass separates them in direction order, so
   // edges never cross at the node. Single-exit nodes keep today's behaviour.
-  let dexit = (:)
-  for c in cells {
-    let key = str(c.index)
-    let outs = ()
-    for (ei, e) in edges.enumerate() {
-      if str(e.from) != key { continue }
-      if e.kind == "direct" {
-        outs.push((kind: "d", key: key + ">" + str(e.to), aim: x.at(str(e.to))))
-      } else if e.kind == "long" {
-        let r = lastr.at(str(ei))
-        if not r.side-ok {
+  // A closure so the crossing sweep can re-run it after moving a corridor
+  // (exit order follows corridor aims); routes are threaded, not captured.
+  let exit-pass = (x, w, lr) => {
+    let dexit = (:)
+    // A re-run allocates from scratch: a stale exit on a route whose source
+    // no longer has several departures must not survive it.
+    for (k, r) in lr {
+      if "exit" in r {
+        let kept = (:)
+        for (rk, rv) in r { if rk != "exit" { kept.insert(rk, rv) } }
+        lr.insert(k, kept)
+      }
+    }
+    for c in cells {
+      let key = str(c.index)
+      let outs = ()
+      for (ei, e) in edges.enumerate() {
+        if str(e.from) != key { continue }
+        if e.kind == "direct" {
           outs.push((
-            kind: "l",
-            ei: ei,
-            aim: r.at("cols", default: (r.cx,)).first(),
+            kind: "d",
+            key: key + ">" + str(e.to),
+            aim: x.at(str(e.to)),
           ))
+        } else if e.kind == "long" {
+          let r = lr.at(str(ei))
+          if not r.side-ok {
+            outs.push((
+              kind: "l",
+              ei: ei,
+              aim: r.at("cols", default: (r.cx,)).first(),
+            ))
+          }
+        }
+      }
+      if outs.len() < 2 { continue }
+      let sx = x.at(key)
+      let sw = w.at(key)
+      let inset = calc.min(pad-x, sw / 4)
+      let (lo, hi) = (sx - sw / 2 + inset, sx + sw / 2 - inset)
+      let half = 0.7 * sw / 2
+      let ordered = outs.sorted(key: o => o.aim)
+      let n = ordered.len()
+      let pitch = calc.min(node-gap / 2, (hi - lo) / (n + 1))
+      // Natural spread exits, then enforce the pitch left-to-right and cap the
+      // overflow back from the right face edge — order preserved, every pair
+      // at least a pitch apart, all on the face.
+      let exs = ordered.map(o => (
+        calc.max(lo, calc.min(
+          hi,
+          sx + calc.max(calc.min(o.aim - sx, half), -half),
+        ))
+      ))
+      for i in range(1, n) {
+        exs.at(i) = calc.max(exs.at(i), exs.at(i - 1) + pitch)
+      }
+      for i in range(n - 1, -1, step: -1) {
+        exs.at(i) = calc.min(exs.at(i), hi - (n - 1 - i) * pitch)
+      }
+      for (i, o) in ordered.enumerate() {
+        if o.kind == "d" { dexit.insert(o.key, exs.at(i)) } else {
+          lr.insert(str(o.ei), (..lr.at(str(o.ei)), exit: exs.at(i)))
         }
       }
     }
-    if outs.len() < 2 { continue }
-    let sx = x.at(key)
-    let sw = w.at(key)
-    let inset = calc.min(pad-x, sw / 4)
-    let (lo, hi) = (sx - sw / 2 + inset, sx + sw / 2 - inset)
-    let half = 0.7 * sw / 2
-    let ordered = outs.sorted(key: o => o.aim)
-    let n = ordered.len()
-    let pitch = calc.min(node-gap / 2, (hi - lo) / (n + 1))
-    // Natural spread exits, then enforce the pitch left-to-right and cap the
-    // overflow back from the right face edge — order preserved, every pair
-    // at least a pitch apart, all on the face.
-    let exs = ordered.map(o => (
-      calc.max(lo, calc.min(
-        hi,
-        sx + calc.max(calc.min(o.aim - sx, half), -half),
-      ))
-    ))
-    for i in range(1, n) {
-      exs.at(i) = calc.max(exs.at(i), exs.at(i - 1) + pitch)
-    }
-    for i in range(n - 1, -1, step: -1) {
-      exs.at(i) = calc.min(exs.at(i), hi - (n - 1 - i) * pitch)
-    }
-    for (i, o) in ordered.enumerate() {
-      if o.kind == "d" { dexit.insert(o.key, exs.at(i)) } else {
-        lastr.insert(str(o.ei), (..lastr.at(str(o.ei)), exit: exs.at(i)))
-      }
-    }
+    (dexit: dexit, lastr: lr)
   }
+  let ep = exit-pass(x, w, lastr)
+  let dexit = ep.dexit
+  lastr = ep.lastr
 
   // Per-target seat and route bookkeeping the per-edge router can't do. Direct
   // parents on the face own their columns; a direct parent the widen caps left
@@ -1010,165 +1038,499 @@
   // occupant. Phase 1 is x-only; the vertical gap each target's bent tails fan
   // through is sized to their number afterwards.
   // A closure would capture the occupancy list by value and never see later
-  // pushes, so the check takes it explicitly.
-  let free = (sx, tk) => tk.all(t => calc.abs(sx - t) >= node-gap / 2)
-  let allocs = ()
-  for c in cells {
-    let d = din.at(str(c.index), default: ())
-    let ins = lin.at(str(c.index), default: ())
-    if d.len() == 0 and ins.len() == 0 { continue }
-    let tx = x.at(str(c.index))
-    let tw = w.at(str(c.index))
-    // `pad-x` keeps seats off the corners of a wide face — but a cross-narrow
-    // node (any plain box in a horizontal flow, whose cross extent is its
-    // measured height) can be barely wider than two pads, collapsing the face
-    // to a point and piling every arrow onto it. Capping the inset at a
-    // quarter of the extent keeps at least half of every face seatable; the
-    // allocate/repair machinery below then spaces landings within it.
-    let inset = calc.min(pad-x, tw / 4)
-    let face-lo = tx - tw / 2 + inset
-    let face-hi = tx + tw / 2 - inset
-    // Each direct parent's *projected landing*: the renderer aims a parent's
-    // entry at its spread exit (toward the target when the parent forks), not
-    // at the parent's own column — modelling the column here let two forking
-    // parents clamp onto the same face edge and double up their arrows. A
-    // projection outside the face bends into an allocated seat like any other
-    // far input.
-    let px = d.map(s => {
-      let sx = x.at(str(s))
-      // A parent's arrow lands where its exit column meets this face: the
-      // allocated exit when the source has several departures, else the
-      // spread aim (the 0.7 matches render's `attach(s, .., 0.7)` — keep the
-      // two in step, render.typ direct-edge branch).
-      let land = dexit.at(str(s) + ">" + str(c.index), default: {
-        let aim = if fanout.at(str(s), default: 0) == 1 { sx } else { tx }
-        let half = 0.7 * w.at(str(s)) / 2
-        sx + calc.max(calc.min(aim - sx, half), -half)
+  // pushes, so the check takes it explicitly. The pass as a whole is also a
+  // closure, so the crossing sweep can re-run it after moving a corridor;
+  // routes and exits are threaded, not captured.
+  let seat-pass = (x, w, lr, dexit) => {
+    let free = (sx, tk) => tk.all(t => calc.abs(sx - t) >= node-gap / 2)
+    let allocs = ()
+    for c in cells {
+      let d = din.at(str(c.index), default: ())
+      let ins = lin.at(str(c.index), default: ())
+      if d.len() == 0 and ins.len() == 0 { continue }
+      let tx = x.at(str(c.index))
+      let tw = w.at(str(c.index))
+      // `pad-x` keeps seats off the corners of a wide face — but a cross-narrow
+      // node (any plain box in a horizontal flow, whose cross extent is its
+      // measured height) can be barely wider than two pads, collapsing the face
+      // to a point and piling every arrow onto it. Capping the inset at a
+      // quarter of the extent keeps at least half of every face seatable; the
+      // allocate/repair machinery below then spaces landings within it.
+      let inset = calc.min(pad-x, tw / 4)
+      let face-lo = tx - tw / 2 + inset
+      let face-hi = tx + tw / 2 - inset
+      // Each direct parent's *projected landing*: the renderer aims a parent's
+      // entry at its spread exit (toward the target when the parent forks), not
+      // at the parent's own column — modelling the column here let two forking
+      // parents clamp onto the same face edge and double up their arrows. A
+      // projection outside the face bends into an allocated seat like any other
+      // far input.
+      let px = d.map(s => {
+        let sx = x.at(str(s))
+        // A parent's arrow lands where its exit column meets this face: the
+        // allocated exit when the source has several departures, else the
+        // spread aim (the 0.7 matches render's `attach(s, .., 0.7)` — keep the
+        // two in step, render.typ direct-edge branch).
+        let land = dexit.at(str(s) + ">" + str(c.index), default: {
+          let aim = if fanout.at(str(s), default: 0) == 1 { sx } else { tx }
+          let half = 0.7 * w.at(str(s)) / 2
+          sx + calc.max(calc.min(aim - sx, half), -half)
+        })
+        (s: s, x: land)
       })
-      (s: s, x: land)
-    })
-    let taken = px.filter(p => p.x >= face-lo and p.x <= face-hi).map(p => p.x)
-    let allocate = (cx, tk) => {
-      let side = if cx <= tx { -1 } else { 1 }
-      let s = if side < 0 { face-lo } else { face-hi }
-      let steps = 0
-      while not free(s, tk) and steps < 32 {
-        s = s - side * node-gap
-        steps += 1
-      }
-      calc.max(face-lo, calc.min(face-hi, s))
-    }
-    // Everything that must *bend* into the face shares one allocation: parents
-    // the skew cap left off the face, and long edges whose corridor can't take
-    // a free straight drop. Long edges use the settle loop's own routes (see
-    // `lastr`), not a recomputation. Seated straight drops claim their columns
-    // as they come.
-    let seated-longs = ()
-    let benders = ()
-    for p in px.filter(p => p.x < face-lo or p.x > face-hi) {
-      benders.push((kind: "direct", key: str(p.s), cx: p.x))
-    }
-    // A segmented route approaches on its *last* column; a straight one on
-    // its single corridor column (last == cx there).
-    for e in ins
-      .map(it => (it: it, r: lastr.at(str(it.ei))))
-      .sorted(key: e => -calc.abs(e.r.at("last", default: e.r.cx) - tx)) {
-      let rcx = e.r.at("last", default: e.r.cx)
-      let seated = rcx >= face-lo and rcx <= face-hi and free(rcx, taken)
-      if seated {
-        taken.push(rcx)
-        seated-longs.push((ei: e.it.ei, r: e.r))
-      } else {
-        benders.push((kind: "long", ei: e.it.ei, r: e.r, cx: rcx))
-      }
-    }
-    // The straight landings — on-face parents and seated drops — are fixed;
-    // bender seats must never coincide with them or with each other.
-    let fixed = taken
-    // Farthest source first, so it claims the outermost seat on its side.
-    let ordered = benders.sorted(key: b => -calc.abs(b.cx - tx))
-    let seated-benders = ()
-    for b in ordered {
-      let seat = allocate(b.cx, taken)
-      taken.push(seat)
-      seated-benders.push((..b, seat: seat))
-    }
-    // Capacity repair: when the face ran out of gap-spaced slots (the search
-    // clamps and can land on an occupied column), respace the bender seats —
-    // evenly across the face in their left-to-right order, nudged off every
-    // fixed column, each strictly right of the last. Pitch may compress at
-    // absurd fan-in, but every landing on the face stays distinct.
-    let crowded = range(taken.len()).any(i => (
-      range(i + 1, taken.len()).any(j => (
-        calc.abs(taken.at(i) - taken.at(j)) < node-gap / 2 - 0.001
-      ))
-    ))
-    if crowded and seated-benders.len() > 0 {
-      let bysx = seated-benders.sorted(key: b => b.seat)
-      let k = bysx.len()
-      let pitch = calc.min(
-        node-gap / 2,
-        (face-hi - face-lo) / (k + fixed.len() + 1),
-      )
-      let repaired = ()
-      let prev = face-lo - pitch
-      for (i, b) in bysx.enumerate() {
-        let s = calc.max(
-          face-lo + (face-hi - face-lo) * (i + 1) / (k + 1),
-          prev + pitch,
-        )
-        let tries = 0
-        while tries < 8 and fixed.any(fc => calc.abs(s - fc) < pitch) {
-          s = s + pitch
-          tries += 1
+      let taken = px
+        .filter(p => p.x >= face-lo and p.x <= face-hi)
+        .map(p => p.x)
+      let allocate = (cx, tk) => {
+        let side = if cx <= tx { -1 } else { 1 }
+        let s = if side < 0 { face-lo } else { face-hi }
+        let steps = 0
+        while not free(s, tk) and steps < 32 {
+          s = s - side * node-gap
+          steps += 1
         }
-        s = calc.max(s, prev + 0.02)
-        prev = s
-        repaired.push((..b, seat: s))
+        calc.max(face-lo, calc.min(face-hi, s))
       }
-      seated-benders = repaired
+      // Everything that must *bend* into the face shares one allocation: parents
+      // the skew cap left off the face, and long edges whose corridor can't take
+      // a free straight drop. Long edges use the settle loop's own routes (see
+      // the threaded routes), not a recomputation. Seated straight drops claim
+      // their columns as they come.
+      let seated-longs = ()
+      let benders = ()
+      for p in px.filter(p => p.x < face-lo or p.x > face-hi) {
+        benders.push((kind: "direct", key: str(p.s), cx: p.x))
+      }
+      // A segmented route approaches on its *last* column; a straight one on
+      // its single corridor column (last == cx there).
+      for e in ins
+        .map(it => (it: it, r: lr.at(str(it.ei))))
+        .sorted(key: e => -calc.abs(e.r.at("last", default: e.r.cx) - tx)) {
+        let rcx = e.r.at("last", default: e.r.cx)
+        let seated = rcx >= face-lo and rcx <= face-hi and free(rcx, taken)
+        if seated {
+          taken.push(rcx)
+          seated-longs.push((ei: e.it.ei, r: e.r))
+        } else {
+          benders.push((kind: "long", ei: e.it.ei, r: e.r, cx: rcx))
+        }
+      }
+      // The straight landings — on-face parents and seated drops — are fixed;
+      // bender seats must never coincide with them or with each other.
+      let fixed = taken
+      // Farthest source first, so it claims the outermost seat on its side.
+      let ordered = benders.sorted(key: b => -calc.abs(b.cx - tx))
+      let seated-benders = ()
+      for b in ordered {
+        let seat = allocate(b.cx, taken)
+        taken.push(seat)
+        seated-benders.push((..b, seat: seat))
+      }
+      // Capacity repair: when the face ran out of gap-spaced slots (the search
+      // clamps and can land on an occupied column), respace the bender seats —
+      // evenly across the face in their left-to-right order, nudged off every
+      // fixed column, each strictly right of the last. Pitch may compress at
+      // absurd fan-in, but every landing on the face stays distinct.
+      let crowded = range(taken.len()).any(i => (
+        range(i + 1, taken.len()).any(j => (
+          calc.abs(taken.at(i) - taken.at(j)) < node-gap / 2 - 0.001
+        ))
+      ))
+      if crowded and seated-benders.len() > 0 {
+        let bysx = seated-benders.sorted(key: b => b.seat)
+        let k = bysx.len()
+        let pitch = calc.min(
+          node-gap / 2,
+          (face-hi - face-lo) / (k + fixed.len() + 1),
+        )
+        let repaired = ()
+        let prev = face-lo - pitch
+        for (i, b) in bysx.enumerate() {
+          let s = calc.max(
+            face-lo + (face-hi - face-lo) * (i + 1) / (k + 1),
+            prev + pitch,
+          )
+          let tries = 0
+          while tries < 8 and fixed.any(fc => calc.abs(s - fc) < pitch) {
+            s = s + pitch
+            tries += 1
+          }
+          s = calc.max(s, prev + 0.02)
+          prev = s
+          repaired.push((..b, seat: s))
+        }
+        seated-benders = repaired
+      }
+      allocs.push((
+        key: str(c.index),
+        rank: c.rank,
+        tx: tx,
+        seated: seated-longs,
+        benders: seated-benders,
+      ))
     }
-    allocs.push((
-      key: str(c.index),
-      rank: c.rank,
-      tx: tx,
-      seated: seated-longs,
-      benders: seated-benders,
-    ))
+    allocs
+  }
+  let allocs = seat-pass(x, w, lastr, dexit)
+
+  // The planned-segment model: the sideways runs ("tracks") and
+  // fully-spanning verticals each edge will draw, tagged by level — rank r's
+  // row band is level 2r, the gap between ranks r-1 and r is level 2r-1.
+  // Heights inside a gap are undecided at this point, but a vertical that
+  // spans a whole level crosses any track there whose span contains its x at
+  // *any* height — which is what makes those crossings forced. The crossing
+  // sweep scores corridor candidates with it and the height allocator orders
+  // each gap's tracks by it. A track carries its span (x0..x1) and the x of
+  // the vertical rising above it (ux) and dropping below it (dx). Mirrors
+  // render.typ's polyline assembly (direct and long branches) — keep the two
+  // in step. Back edges and self loops draw outside the rank body and are
+  // left out; the horizontal-orientation diamond fork is modelled as the
+  // plain direct edge it is in flow space.
+  let edge-plan = (x, w, lr, dexit, allocs) => {
+    let dseat-x = (:)
+    let lseat-x = (:)
+    let lseated = (:)
+    for a in allocs {
+      for s2 in a.seated { lseated.insert(str(s2.ei), true) }
+      for b in a.benders {
+        if b.kind == "direct" {
+          dseat-x.insert(b.key + ">" + a.key, b.seat)
+        } else { lseat-x.insert(str(b.ei), b.seat) }
+      }
+    }
+    let hs = ()
+    let vs = ()
+    for (ei, e) in edges.enumerate() {
+      let (sk, tk) = (str(e.from), str(e.to))
+      if e.kind == "direct" {
+        let (sx, tx) = (x.at(sk), x.at(tk))
+        let lvl = 2 * rankof.at(tk) - 1
+        // The landing mirrors the seat pass's projection (and render's
+        // attach aim): the allocated exit, else the spread aim.
+        let land = dexit.at(sk + ">" + tk, default: {
+          let aim = if fanout.at(sk, default: 0) == 1 { sx } else { tx }
+          let half = 0.7 * w.at(sk) / 2
+          sx + calc.max(calc.min(aim - sx, half), -half)
+        })
+        let seat = dseat-x.at(sk + ">" + tk, default: none)
+        let entry = if seat != none { seat } else {
+          let tw = w.at(tk)
+          let inset = calc.min(pad-x, tw / 4)
+          calc.max(tx - tw / 2 + inset, calc.min(tx + tw / 2 - inset, land))
+        }
+        if calc.abs(entry - land) < 0.01 {
+          vs.push((edge: ei, x: land, level: lvl))
+        } else {
+          // Only a seated bend reaches here: an unseated landing is on the
+          // face by construction, so entry == land above. (Render can still
+          // z-bend an unseated edge into a shaped face — the clamp-to-face
+          // approximation plans that as a straight drop.)
+          hs.push((
+            edge: ei,
+            kind: "dseat",
+            level: lvl,
+            x0: calc.min(land, entry),
+            x1: calc.max(land, entry),
+            ux: land,
+            dx: entry,
+            fixed: false,
+            src: sk,
+            tgt: tk,
+          ))
+        }
+      } else if e.kind == "long" {
+        if str(ei) not in lr { continue }
+        let r = lr.at(str(ei))
+        let (ur, vr) = (rankof.at(sk), rankof.at(tk))
+        if vr - ur < 2 { continue }
+        let cols = r.at("cols", default: ())
+        let colat = ri => if cols.len() == vr - ur - 1 {
+          cols.at(ri - ur - 1)
+        } else { r.cx }
+        let c0 = colat(ur + 1)
+        let clast = colat(vr - 1)
+        let entry = if str(ei) in lseated { clast } else {
+          lseat-x.at(str(ei), default: r.entry)
+        }
+        if r.side-ok {
+          // A diamond's side exit runs across its own row at the node's own
+          // height — fixed, never reordered, but corridors still cross it.
+          hs.push((
+            edge: ei,
+            kind: "side",
+            level: 2 * ur,
+            x0: calc.min(x.at(sk), c0),
+            x1: calc.max(x.at(sk), c0),
+            ux: none,
+            dx: c0,
+            fixed: true,
+            src: sk,
+            tgt: tk,
+          ))
+          vs.push((edge: ei, x: c0, level: 2 * ur + 1))
+        } else {
+          let ex = r.at("exit", default: x.at(sk))
+          if calc.abs(ex - c0) >= 0.01 {
+            hs.push((
+              edge: ei,
+              kind: "head",
+              level: 2 * ur + 1,
+              x0: calc.min(ex, c0),
+              x1: calc.max(ex, c0),
+              ux: ex,
+              dx: c0,
+              fixed: false,
+              src: sk,
+              tgt: tk,
+            ))
+          } else {
+            vs.push((edge: ei, x: c0, level: 2 * ur + 1))
+          }
+        }
+        // The vertical run: every intermediate row band, and every
+        // intermediate gap passed without changing column; a column change
+        // is a jog track there instead.
+        for ri in range(ur + 1, vr) {
+          vs.push((edge: ei, x: colat(ri), level: 2 * ri))
+          if ri + 1 < vr {
+            let (ca, cb) = (colat(ri), colat(ri + 1))
+            if calc.abs(ca - cb) < 0.01 {
+              vs.push((edge: ei, x: ca, level: 2 * ri + 1))
+            } else {
+              hs.push((
+                edge: ei,
+                kind: "jog",
+                level: 2 * ri + 1,
+                x0: calc.min(ca, cb),
+                x1: calc.max(ca, cb),
+                ux: ca,
+                dx: cb,
+                fixed: false,
+                src: sk,
+                tgt: tk,
+              ))
+            }
+          }
+        }
+        if calc.abs(entry - clast) < 0.01 {
+          vs.push((edge: ei, x: clast, level: 2 * vr - 1))
+        } else {
+          hs.push((
+            edge: ei,
+            kind: "tail",
+            level: 2 * vr - 1,
+            x0: calc.min(clast, entry),
+            x1: calc.max(clast, entry),
+            ux: clast,
+            dx: entry,
+            fixed: false,
+            src: sk,
+            tgt: tk,
+          ))
+        }
+      }
+    }
+    (hs: hs, vs: vs)
   }
 
-  // Vertical space adapts to traffic: the gap above a rank grows to hold the
-  // largest fan of bent tails arriving there (at `lane-gap` pitch, entered by
-  // at least a `stub`-length final drop), instead of squeezing them into a
-  // fixed fraction of `rank-gap`.
-  let traffic = range(ranks).map(_ => 0)
+  // Corridor re-choice: route-long picks each corridor blind to every other
+  // edge; with exits and seats known, each long edge's clear candidates are
+  // re-scored by the crossings they *force* — the corridor vertical crosses
+  // every sideways run whose span contains it on a level it fully spans (at
+  // any height), and the edge's own head and tail runs cross every foreign
+  // vertical spanning their gap. Same-gap run-vs-run meetings are left to
+  // the height allocator, except the residual no stacking order can remove.
+  // Candidates and clearance filters are corridor-cands' own, so a choice
+  // here satisfies every landing and box invariant; a score tie keeps the
+  // earlier (legacy-preferred) candidate, so a diagram that can't improve
+  // doesn't move. Segmented routes (box-constrained), side exits, and
+  // corridors an unanchored node aligned itself over are pinned — their
+  // segments still count as everyone else's obstacles. Any change re-runs
+  // the exit and seat passes (a moved corridor reorders both) and one more
+  // sweep round reconciles — mirroring the segmented re-relax; bounded at
+  // two rounds of strict-improvement choices.
+  for sweep in range(2) {
+    let inv = edge-plan(x, w, lastr, dexit, allocs)
+    let changed = false
+    for (ei, e) in edges.enumerate() {
+      if e.kind != "long" or str(ei) not in lastr { continue }
+      let r = lastr.at(str(ei))
+      if r.side-ok or "cols" in r { continue }
+      let (sk, tk) = (str(e.from), str(e.to))
+      if sk in cwant-last or tk in cwant-last { continue }
+      let (ur, vr) = (rankof.at(sk), rankof.at(tk))
+      if vr - ur < 2 { continue }
+      let ex = r.at("exit", default: x.at(sk))
+      let fhs = inv.hs.filter(h => h.edge != ei)
+      let fvs = inv.vs.filter(v => v.edge != ei)
+      // A member edge must not trade its box for a crossing: a candidate
+      // outside a band both endpoints share forfeits the containment the
+      // group promises. A heavy penalty rather than a ban — when nothing
+      // inside is clear the legacy route already sits outside, and the
+      // sweep should still compare the outside candidates fairly.
+      let shared-bands = live-groups
+        .filter(g => (
+          gp.at(sk, default: ()).contains(g.id)
+            and gp.at(tk, default: ()).contains(g.id)
+        ))
+        .map(g => gband(g, x, w, chan))
+      let score = c => {
+        // The candidate's entry mirrors what the seat pass will do with it:
+        // an on-face approach lands where step-entry says, an off-face one
+        // is bent into a seat somewhere on the face — approximated as the
+        // near face edge. Scoring the off-face case as a straight drop at
+        // the corridor (step-entry's answer for a far column) hid the whole
+        // width of the real bent tail and made far-outside corridors look
+        // free.
+        let ttx = x.at(tk)
+        let ttw = w.at(tk)
+        let tinset = calc.min(pad-x, ttw / 4)
+        let (flo, fhi) = (ttx - ttw / 2 + tinset, ttx + ttw / 2 - tinset)
+        let se = step-entry(c, e.to, x)
+        let entry = if se >= flo and se <= fhi { se } else {
+          calc.max(flo, calc.min(fhi, c))
+        }
+        let n = 0
+        for b in shared-bands {
+          if c < b.lo + 0.005 or c > b.hi - 0.005 { n += 100 }
+        }
+        // The levels the corridor vertical fully spans: every intermediate
+        // row band and gap, plus the head/tail gap when its run degenerates
+        // to a straight drop.
+        let lvls = ()
+        for ri in range(ur + 1, vr) {
+          lvls.push(2 * ri)
+          if ri + 1 < vr { lvls.push(2 * ri + 1) }
+        }
+        if calc.abs(ex - c) < 0.01 { lvls.push(2 * ur + 1) }
+        if calc.abs(entry - c) < 0.01 { lvls.push(2 * vr - 1) }
+        for h in fhs {
+          if lvls.contains(h.level) and c > h.x0 + 0.005 and c < h.x1 - 0.005 {
+            n += 1
+          }
+        }
+        // The head and tail runs, when present.
+        for (lvl, a, b) in ((2 * ur + 1, ex, c), (2 * vr - 1, c, entry)) {
+          if calc.abs(a - b) < 0.01 { continue }
+          let own = (
+            x0: calc.min(a, b),
+            x1: calc.max(a, b),
+            ux: a,
+            dx: b,
+          )
+          for v in fvs {
+            if (
+              v.level == lvl and v.x > own.x0 + 0.005 and v.x < own.x1 - 0.005
+            ) {
+              n += 1
+            }
+          }
+          for h in fhs {
+            if h.level == lvl and not h.fixed {
+              n += calc.min(pair-cost(own, h), pair-cost(h, own))
+            }
+          }
+        }
+        n
+      }
+      let cands = corridor-cands(
+        e.from,
+        e.to,
+        false,
+        lcount.at(sk, default: 0) >= 2,
+        x,
+        w,
+        chan,
+      )
+      if cands.len() == 0 { continue }
+      let cur = score(r.cx)
+      if cur == 0 { continue }
+      let (best, bestn) = (r.cx, cur)
+      for c in cands {
+        let n = score(c)
+        if n < bestn {
+          best = c
+          bestn = n
+        }
+      }
+      if calc.abs(best - r.cx) > 0.005 {
+        lastr.insert(str(ei), (
+          cx: best,
+          side-ok: false,
+          entry: step-entry(best, e.to, x),
+        ))
+        changed = true
+      }
+    }
+    if not changed { break }
+    let ep2 = exit-pass(x, w, lastr)
+    dexit = ep2.dexit
+    lastr = ep2.lastr
+    allocs = seat-pass(x, w, lastr, dexit)
+  }
+
+  // Jogging corridors must not share a lane: where two overlap in x and in
+  // the ranks they cross, shift the later one outward by `lane-gap` until
+  // clear. Seated corridors never move — theirs is the straight drop being
+  // protected — and a segmented route was placed rank by rank against real
+  // clearances, so its runs register as immovable. Runs before the height
+  // passes so gap sizing and the height allocator see the final columns.
+  let lane-seated = (:)
   for a in allocs {
-    for side in (-1, 1) {
-      let n = a
-        .benders
-        .filter(b => if side < 0 { b.cx <= a.tx } else { b.cx > a.tx })
-        .len()
-      traffic.at(a.rank) = calc.max(traffic.at(a.rank), n)
-    }
+    for s2 in a.seated { lane-seated.insert(str(s2.ei), true) }
   }
-  // Exit fans need room too: a node's several long departures fan at
-  // lane-gap pitch in the gap beneath its rank (see the hy fan below).
-  let exit-fan = (:)
+  let lanes = ()
   for (ei, e) in edges.enumerate() {
-    if (
-      e.kind == "long" and str(ei) in lastr and not lastr.at(str(ei)).side-ok
+    if e.kind != "long" or str(ei) not in lastr { continue }
+    let r = lastr.at(str(ei))
+    let span = (
+      calc.min(rankof.at(str(e.from)), rankof.at(str(e.to))),
+      calc.max(rankof.at(str(e.from)), rankof.at(str(e.to))),
+    )
+    if "cols" in r {
+      for c in r.cols.dedup() { lanes.push((cx: c, span: span)) }
+      continue
+    }
+    if str(ei) in lane-seated {
+      lanes.push((cx: r.cx, span: span))
+      continue
+    }
+    let tx = x.at(str(e.to))
+    let side = if r.cx <= tx { -1 } else { 1 }
+    let cx = r.cx
+    let steps = 0
+    while (
+      steps < 32
+        and lanes.any(l => (
+          calc.abs(l.cx - cx) < lane-gap
+            and l.span.at(0) < span.at(1)
+            and span.at(0) < l.span.at(1)
+        ))
     ) {
-      exit-fan.insert(str(e.from), exit-fan.at(str(e.from), default: 0) + 1)
+      cx = cx + side * lane-gap
+      steps += 1
     }
+    lanes.push((cx: cx, span: span))
+    if cx != r.cx { lastr.insert(str(ei), (..r, cx: cx)) }
   }
-  for (k, n) in exit-fan {
-    let below = rankof.at(k) + 1
-    if n >= 2 and below < ranks {
-      traffic.at(below) = calc.max(traffic.at(below), n)
-    }
-  }
+
+  // Vertical space adapts to traffic: each inter-rank gap grows to hold
+  // every sideways run that will live in it — entry tails, exit heads and
+  // jogs alike — stacked at `lane-gap` pitch with a `stub`-length
+  // straight left at both faces. The planned-segment model knows each gap's
+  // runs exactly, so the band is sized to the true count, not a per-node
+  // fan estimate.
+  let tracks-inv = edge-plan(x, w, lastr, dexit, allocs)
+  // The width test matches edge-plan's own bend threshold (>= 0.01), so a
+  // run counted as drawn is always counted for room.
+  let gap-tracks = r => tracks-inv.hs.filter(h => (
+    h.level == 2 * r - 1 and h.x1 - h.x0 >= 0.01
+  ))
   let gaps = range(ranks).map(r => if r == 0 { 0 } else {
-    calc.max(rank-gap, 2 * (stub + traffic.at(r) * lane-gap))
+    calc.max(
+      rank-gap,
+      2 * stub + calc.max(0, gap-tracks(r).len() - 1) * lane-gap,
+    )
   })
   // Group borders need vertical room too: the gap above a box's top rank
   // holds its title band and padding, the gap below its bottom rank its
@@ -1234,17 +1596,26 @@
     ))
   }
 
-  // Heights: a seated drop keeps its label run at the gap's midpoint; bent
-  // tails fan at fixed pitch — farthest lowest, so nested tails and the
-  // corridors that terminate on them never cross.
+  // Heights. The legacy formulas first — a seated drop's run at the gap's
+  // midpoint, bent tails fanned above the target (farthest lowest), exit
+  // heads fanned below the source (farthest highest), jogs at gap
+  // midpoints. They remain the values for runs the allocator below
+  // doesn't touch and the starting order and fallback for those it does;
+  // the fan orders become its hard constraints (each fan is internally
+  // crossing-free by construction, and must stay so).
   let route = (:)
   let dseat = (:)
+  let legacy = (:) // track id -> legacy y
+  let fan-pairs = () // hard (above, below) track-id pairs
   for a in allocs {
     let top = y.at(a.key) + hof.at(a.key) / 2
     for s in a.seated {
+      // Fresh routes, not the copies captured at seat time: the lane
+      // deconfliction above may have shifted a column since.
+      let fr = lastr.at(str(s.ei))
       route.insert(str(s.ei), (
-        ..s.r,
-        entry: s.r.at("last", default: s.r.cx),
+        ..fr,
+        entry: fr.at("last", default: fr.cx),
         ay: top + gaps.at(a.rank) / 2,
       ))
     }
@@ -1253,22 +1624,31 @@
         .benders
         .filter(b => if side < 0 { b.cx <= a.tx } else { b.cx > a.tx })
         .sorted(key: b => -calc.abs(b.cx - a.tx))
+      let tid = b => if b.kind == "direct" { "d:" + b.key + ">" + a.key } else {
+        "t:" + str(b.ei)
+      }
       for (i, b) in group.enumerate() {
         let ay = top + stub + i * lane-gap
+        legacy.insert(tid(b), ay)
+        if i + 1 < group.len() {
+          // Farthest source lowest: the next (nearer) member stays above it.
+          fan-pairs.push((above: tid(group.at(i + 1)), below: tid(b)))
+        }
         if b.kind == "direct" {
           // Keyed by (from, to): a direct edge is unique per pair here.
           dseat.insert(b.key + ">" + a.key, (x: b.seat, ay: ay))
         } else {
-          route.insert(str(b.ei), (..b.r, entry: b.seat, ay: ay))
+          route.insert(str(b.ei), (
+            ..lastr.at(str(b.ei)),
+            entry: b.seat,
+            ay: ay,
+          ))
         }
       }
     }
   }
-  // Every long edge also carries its head clearance: the y its corridor may
-  // drop to below the source before jogging across — half-way into the gap
-  // beneath the source's rank, or, when a node has several long departures,
-  // its own height in a fan below the node (farthest corridor jogging first,
-  // like the entry tails) so their horizontal runs never overlie.
+  // Exit heads: fanned when a node has several long departures (farthest
+  // corridor jogging first, like the entry tails).
   let exit-rank = (:)
   for (ei, e) in edges.enumerate() {
     if e.kind == "long" and str(ei) in route and not route.at(str(ei)).side-ok {
@@ -1285,8 +1665,85 @@
   for (k, fans) in exit-rank {
     if fans.len() < 2 { continue }
     let bottom = y.at(k) - hof.at(k) / 2
-    for (i, f) in fans.sorted(key: f => -f.dist).enumerate() {
+    let ordered = fans.sorted(key: f => -f.dist)
+    for (i, f) in ordered.enumerate() {
       hy-of.insert(str(f.ei), bottom - stub - i * lane-gap)
+      legacy.insert("h:" + str(f.ei), bottom - stub - i * lane-gap)
+      if i + 1 < ordered.len() {
+        // Farthest corridor highest: it must stay above the next one.
+        fan-pairs.push((
+          above: "h:" + str(f.ei),
+          below: "h:" + str(ordered.at(i + 1).ei),
+        ))
+      }
+    }
+  }
+  // The per-gap allocator: every sideways run sharing an inter-rank band is
+  // one "track"; stacked in the wrong order, one track's riser or dropper
+  // pierces another's span. Order each band's tracks to minimise those
+  // crossings (fan pairs held fixed), then stack the block centred in the
+  // band at `lane-gap` pitch — the gap was sized above to hold exactly this.
+  // An unsettled ordering (cap hit) keeps every legacy height: degrade,
+  // never fail.
+  let tid-of = h => if h.kind == "dseat" {
+    "d:" + h.src + ">" + h.tgt
+  } else if h.kind == "head" {
+    "h:" + str(h.edge)
+  } else if h.kind == "tail" { "t:" + str(h.edge) } else {
+    "j:" + str(h.edge) + ":" + str(h.level)
+  }
+  let alloc-y = (:)
+  for gr in range(1, ranks) {
+    let btop = rank-y.at(gr - 1) - rank-h.at(gr - 1) / 2
+    let bbot = rank-y.at(gr) + rank-h.at(gr) / 2
+    let mid = (btop + bbot) / 2
+    let ts = gap-tracks(gr).map(h => (
+      id: tid-of(h),
+      edge: h.edge,
+      kind: h.kind,
+      gap: gr,
+      x0: h.x0,
+      x1: h.x1,
+      ux: h.ux,
+      dx: h.dx,
+      legacy-y: legacy.at(tid-of(h), default: mid),
+    ))
+    if ts.len() == 1 {
+      alloc-y.insert(ts.first().id, mid)
+    } else if ts.len() >= 2 {
+      let cons = fan-pairs.filter(c => (
+        ts.any(t => t.id == c.above) and ts.any(t => t.id == c.below)
+      ))
+      let res = order-tracks(
+        ts.sorted(key: t => (-t.legacy-y, t.edge)),
+        cons,
+      )
+      if res.settled {
+        let k = res.order.len()
+        for (i, id) in res.order.enumerate() {
+          let yy = mid + ((k - 1) / 2 - i) * lane-gap
+          alloc-y.insert(
+            id,
+            calc.max(bbot + stub, calc.min(btop - stub, yy)),
+          )
+        }
+      }
+    }
+  }
+  // Write the allocated heights back over the legacy ones.
+  for a in allocs {
+    for b in a.benders {
+      if b.kind == "direct" {
+        let key = b.key + ">" + a.key
+        if "d:" + key in alloc-y {
+          dseat.insert(key, (..dseat.at(key), ay: alloc-y.at("d:" + key)))
+        }
+      } else if "t:" + str(b.ei) in alloc-y {
+        route.insert(str(b.ei), (
+          ..route.at(str(b.ei)),
+          ay: alloc-y.at("t:" + str(b.ei)),
+        ))
+      }
     }
   }
   for (ei, e) in edges.enumerate() {
@@ -1295,18 +1752,19 @@
       // A long edge always descends, so its source is never the last rank and
       // `rs + 1` is in range; `default` degrades a mis-ranked edge to a plain
       // drop instead of crashing, rather than trusting that invariant blindly.
-      let hy = hy-of.at(
+      let hy = alloc-y.at("h:" + str(ei), default: hy-of.at(
         str(ei),
         default: (
           y.at(str(e.from))
             - hof.at(str(e.from)) / 2
             - gaps.at(rs + 1, default: rank-gap) / 2
         ),
-      )
+      ))
       route.insert(str(ei), (..route.at(str(ei)), hy: hy))
       // A segmented route changes column between ranks: each change becomes a
-      // jog (y, next-column) halfway into the inter-rank gap — the renderer
-      // draws down to y, across to the next column, and continues.
+      // jog (y, next-column) in the inter-rank gap — at its allocated track
+      // height, or halfway into the gap when the allocator left it alone —
+      // and the renderer draws down to y, across to the next column, and on.
       let r = route.at(str(ei))
       if "cols" in r {
         let span = range(
@@ -1318,10 +1776,13 @@
         for (i, rr) in span.enumerate() {
           if calc.abs(r.cols.at(i) - prev) > 0.001 {
             jogs.push((
-              y: (
-                rank-y.at(rr - 1)
-                  - rank-h.at(rr - 1) / 2
-                  - gaps.at(rr, default: rank-gap) / 2
+              y: alloc-y.at(
+                "j:" + str(ei) + ":" + str(2 * rr - 1),
+                default: (
+                  rank-y.at(rr - 1)
+                    - rank-h.at(rr - 1) / 2
+                    - gaps.at(rr, default: rank-gap) / 2
+                ),
               ),
               x: r.cols.at(i),
             ))
@@ -1332,45 +1793,61 @@
       }
     }
   }
-  // Jogging corridors must not share a lane: where two overlap in x and in the
-  // ranks they cross, shift the later one outward by `lane-gap` until clear.
-  // Seated corridors never move — theirs is the straight drop being protected.
-  let lanes = ()
+  // The final planned polylines, one per flow edge, in canvas space — the
+  // pure mirror of render.typ's point assembly (direct and long branches),
+  // close enough for crossing counts: endpoints land on face midlines rather
+  // than shape outlines, and back edges / self loops are left out. Returned
+  // as `plan` for tests and diagnostics; render still assembles its own.
+  let plan = (:)
   for (ei, e) in edges.enumerate() {
-    if e.kind != "long" { continue }
-    let r = route.at(str(ei))
-    let span = (
-      calc.min(rankof.at(str(e.from)), rankof.at(str(e.to))),
-      calc.max(rankof.at(str(e.from)), rankof.at(str(e.to))),
-    )
-    // A segmented route was placed rank by rank against real clearances:
-    // register its runs so other corridors keep off, but never shift it.
-    if "cols" in r {
-      for c in r.cols.dedup() { lanes.push((cx: c, span: span)) }
-      continue
+    let (sk, tk) = (str(e.from), str(e.to))
+    if e.kind == "direct" {
+      let (sx, tx) = (x.at(sk), x.at(tk))
+      let sbot = y.at(sk) - hof.at(sk) / 2
+      let ttop = y.at(tk) + hof.at(tk) / 2
+      let ex = dexit.at(sk + ">" + tk, default: {
+        let aim = if fanout.at(sk, default: 0) == 1 { sx } else { tx }
+        let half = 0.7 * w.at(sk) / 2
+        sx + calc.max(calc.min(aim - sx, half), -half)
+      })
+      let ds = dseat.at(sk + ">" + tk, default: none)
+      plan.insert(str(ei), if ds != none {
+        ((ex, sbot), (ex, ds.ay), (ds.x, ds.ay), (ds.x, ttop))
+      } else {
+        let tw = w.at(tk)
+        let inset = calc.min(pad-x, tw / 4)
+        let entry = calc.max(
+          tx - tw / 2 + inset,
+          calc.min(tx + tw / 2 - inset, ex),
+        )
+        if calc.abs(ex - entry) < 0.01 { ((ex, sbot), (ex, ttop)) } else {
+          let my = (sbot + ttop) / 2
+          ((ex, sbot), (ex, my), (entry, my), (entry, ttop))
+        }
+      })
+    } else if e.kind == "long" and str(ei) in route {
+      let r = route.at(str(ei))
+      let ttop = y.at(tk) + hof.at(tk) / 2
+      let head = if r.side-ok {
+        let flank = if r.cx < x.at(sk) { x.at(sk) - w.at(sk) / 2 } else {
+          x.at(sk) + w.at(sk) / 2
+        }
+        ((flank, y.at(sk)), (r.cx, y.at(sk)))
+      } else {
+        let ex = r.at("exit", default: x.at(sk))
+        ((ex, y.at(sk) - hof.at(sk) / 2), (ex, r.hy), (r.cx, r.hy))
+      }
+      let px2 = r.cx
+      let mids = ()
+      for j in r.at("jogs", default: ()) {
+        mids += ((px2, j.y), (j.x, j.y))
+        px2 = j.x
+      }
+      plan.insert(
+        str(ei),
+        head + mids + ((px2, r.ay), (r.entry, r.ay), (r.entry, ttop)),
+      )
     }
-    let seated = calc.abs(r.cx - r.entry) < 0.01
-    if seated {
-      lanes.push((cx: r.cx, span: span))
-      continue
-    }
-    let tx = x.at(str(e.to))
-    let side = if r.cx <= tx { -1 } else { 1 }
-    let cx = r.cx
-    let steps = 0
-    while (
-      steps < 32
-        and lanes.any(l => (
-          calc.abs(l.cx - cx) < lane-gap
-            and l.span.at(0) < span.at(1)
-            and span.at(0) < l.span.at(1)
-        ))
-    ) {
-      cx = cx + side * lane-gap
-      steps += 1
-    }
-    lanes.push((cx: cx, span: span))
-    if cx != r.cx { route.insert(str(ei), (..r, cx: cx)) }
   }
 
   (
@@ -1382,6 +1859,7 @@
     dexit: dexit,
     fanout: fanout,
     hulls: hulls,
+    plan: plan,
     settled: settled,
   )
 }

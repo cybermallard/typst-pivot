@@ -19,6 +19,9 @@ a minor release — each is flagged with a migration note.
 - `flowchart`: a node that connects only to a distant step — a feed or store
   sitting off to one side — now lines up with that connection, so its line runs
   straight to the target instead of taking a detour around other nodes.
+- `flowchart`: edges cross each other far less. A line now prefers the path
+  that crosses the fewest others, and the sideways runs sharing the space
+  between two rows are stacked in whichever order avoids crossing. 
 
 ### Added
 
@@ -63,7 +66,7 @@ a minor release — each is flagged with a migration note.
   to more distant steps (a feed off to the side, say) could make the whole
   diagram grow wider and wider without ever reaching a stable layout. Such a
   node now stays put, and the diagram lays out normally.
-  - `flowchart`: several arrows leaving one node could all depart from the
+- `flowchart`: several arrows leaving one node could all depart from the
   same point, showing as one line until they diverged. Each now leaves from
   its own point on the node, spaced from the rest.
 
