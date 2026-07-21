@@ -76,7 +76,12 @@
     let txt-col = if c.at("outline", default: none) != none {
       c.outline
     } else { label-color }
-    let lbl = text(size: label-size, fill: txt-col, c.label)
+    // Centre the label: a multi-line label's shorter lines would otherwise
+    // sit left (Typst's default paragraph alignment), off-centre in the
+    // shape. A document `#set align` can't reach inside the canvas, so the
+    // centring has to live here. Single-line labels fill their box, so it is
+    // a no-op for them.
+    let lbl = align(center, text(size: label-size, fill: txt-col, c.label))
     let m = measure(lbl)
     let iw = calc.max(m.width / 1cm + 2 * pad-x, min-w)
     let ih = m.height / 1cm + 2 * pad-y
