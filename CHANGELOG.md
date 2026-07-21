@@ -74,6 +74,8 @@ a minor release — each is flagged with a migration note.
 - `flowchart`: several arrows leaving one node could all depart from the
   same point, showing as one line until they diverged. Each now leaves from
   its own point on the node, spaced from the rest.
+- `flowchart`: an edge label inside a group box with a `fill:` showed a white
+  rectangle behind its text. The label's backing now matches the tint under it.
 
 ## [0.2.0] - 2026-07-05
 

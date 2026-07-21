@@ -440,6 +440,9 @@
         })
         .sorted(key: s => -s.score)
         .map(s => s.seg)
+      // Built here only to be measured — the draw pass rebuilds the box with
+      // a knockout fill matched to whatever is painted under the label's
+      // final spot (fill doesn't change the measure).
       let body = box(
         fill: elabel-fill,
         inset: elabel-inset,
@@ -447,7 +450,7 @@
       )
       let m = measure(body)
       (
-        body: body,
+        lbl: lbl,
         segs: segs,
         hw: m.width / 2cm,
         hh: m.height / 2cm,
@@ -774,8 +777,57 @@
         + titles.map(t => t.box)
     )
     let spots = label-spots(labelled, boxes, edge-lines, head-room: stub)
+    // A label's knockout must vanish into whatever is painted beneath it: on
+    // the plain page that is the base knockout colour, inside a tinted group
+    // box it is the base with each containing wash layered over it. Composite
+    // exactly what the hull pass painted (outermost first — hull-list is
+    // depth-sorted), so the box blends in instead of showing as a pale
+    // rectangle over the tint. The solver keeps labels off border lines, so
+    // an anchor is cleanly inside or outside each box; anything that isn't a
+    // plain colour (a gradient fill, a non-colour base) is skipped and the
+    // running colour kept — degrade, never fail.
+    let hull-tints = hull-list
+      .map(e => {
+        let (ax, ay) = map((e.h.x0, e.h.y0))
+        let (bx, by) = map((e.h.x1, e.h.y1))
+        (
+          x0: calc.min(ax, bx),
+          x1: calc.max(ax, bx),
+          y0: calc.min(ay, by),
+          y1: calc.max(ay, by),
+          tint: gtint(e.gr.fill),
+        )
+      })
+      .filter(t => t.tint != none)
+    let knock = p => {
+      let base = elabel-fill
+      for t in hull-tints {
+        if (
+          p.at(0) >= t.x0
+            and p.at(0) <= t.x1
+            and p.at(1) >= t.y0
+            and p.at(1) <= t.y1
+            and type(base) == color
+            and type(t.tint) == color
+        ) {
+          let b = rgb(base).components()
+          let f = rgb(t.tint).components()
+          let a = f.at(3)
+          base = rgb(
+            f.at(0) * a + b.at(0) * (100% - a),
+            f.at(1) * a + b.at(1) * (100% - a),
+            f.at(2) * a + b.at(2) * (100% - a),
+          )
+        }
+      }
+      base
+    }
     for (i, it) in labelled.enumerate() {
-      content(spots.at(i), it.body)
+      content(spots.at(i), box(
+        fill: knock(spots.at(i)),
+        inset: elabel-inset,
+        text(size: elabel-size, fill: elabel-color, it.lbl),
+      ))
     }
 
     for p in pos.values() { draw-node(p) }
