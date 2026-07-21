@@ -27,6 +27,9 @@ a minor release — each is flagged with a migration note.
 
 ### Added
 
+- `flowchart`: `node(.., outline: <colour>)` draws a node as an outline — no fill,
+  just the border and the text. Good for terminal or verdict states as green "pass"
+  or a red "block".
 - `flowchart`: a `"cylinder"` node shape — useful to visualise a feed, 
   database, or log store. It stays upright in both orientations.
 - `flowchart`: `group(id, [Title], ..members)` draws a titled box around

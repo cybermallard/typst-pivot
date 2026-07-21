@@ -214,6 +214,7 @@
     label: nd.label,
     shape: nd.shape,
     fill: nd.fill,
+    outline: nd.outline,
     gpath: gpath.at(str(nd.index), default: ()),
   ))
 

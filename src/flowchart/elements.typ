@@ -2,20 +2,22 @@
 // directed `edge`s — plus optional `group`s that draw a titled box around
 // related nodes — all passed together in one variadic `flowchart(..)` call
 // and the model sorts them out. A node has an id (referenced by edges), a label
-// (trailing content), a shape, and an opt-in fill. An edge names a source and a
-// target node id and an optional label — a branch condition like "yes" / "no".
-// Pure; no cetz.
+// (trailing content), a shape, and either an opt-in `fill` (a solid node) or an
+// opt-in `outline` (a skeleton node: no fill, that colour on the border and the
+// text) — one or the other, not both. An edge names a source and a target node
+// id and an optional label — a branch condition like "yes" / "no". Pure; no cetz.
 //
 //   node("q", [Known-bad hash?], shape: "diamond")
 //   edge("q", "block", label: [yes])
 //   group("triage", [Automated triage], "q", "block")
 
-#let node(id, label, shape: "rectangle", fill: none) = (
+#let node(id, label, shape: "rectangle", fill: none, outline: none) = (
   kind: "node",
   id: id,
   label: label,
   shape: shape,
   fill: fill,
+  outline: outline,
 )
 
 // `label-offset` is the escape hatch for a stubborn label: a `(x, y)` pair of

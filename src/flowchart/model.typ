@@ -98,6 +98,17 @@
           + ": shape must be one of "
           + shapes.join(", "),
       )
+      // `outline` is the fill-less alternative to `fill`: a colour on the
+      // border and the text, no fill. The two are mutually exclusive.
+      let ol = it.at("outline", default: none)
+      assert(
+        ol == none or type(ol) == color,
+        message: "node " + repr(it.id) + ": outline must be a colour",
+      )
+      assert(
+        it.fill == none or ol == none,
+        message: "node " + repr(it.id) + ": set fill: or outline:, not both",
+      )
       ids.insert(it.id, nodes.len())
       nodes.push((
         index: nodes.len(),
@@ -105,6 +116,7 @@
         label: it.label,
         shape: it.shape,
         fill: it.fill,
+        outline: ol,
       ))
     } else {
       assert(

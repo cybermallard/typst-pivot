@@ -70,7 +70,13 @@
   // Measure each label and give the node a box per shape (a diamond grows to hold
   // the label, a rounded rectangle rounds its corners, a parallelogram leans off vertical).
   let sized = g.cells.map(c => {
-    let lbl = text(size: label-size, fill: label-color, c.label)
+    // An outline node carries its accent onto the text too; a plain or filled
+    // node keeps the neutral label colour. Decided here because the label is
+    // built (and measured) before draw-node runs.
+    let txt-col = if c.at("outline", default: none) != none {
+      c.outline
+    } else { label-color }
+    let lbl = text(size: label-size, fill: txt-col, c.label)
     let m = measure(lbl)
     let iw = calc.max(m.width / 1cm + 2 * pad-x, min-w)
     let ih = m.height / 1cm + 2 * pad-y
@@ -146,6 +152,7 @@
       th: c.th,
       shape: c.shape,
       fill: c.fill,
+      outline: c.at("outline", default: none),
       lbl: c.lbl,
     ))
   }
@@ -247,10 +254,19 @@
       // along the cross axis and drawn in canonical space, its flow faces stay flat under the
       // map; the rounded-box radius is capped by `th` so a grown merge keeps flat faces.
       let (x, y, w, h) = (p.x, p.y, p.w, p.h)
-      let fc = if p.fill == none { node-fill } else { p.fill }
+      // An outline node draws with no fill and its accent on the border at full
+      // strength (the label already carries the accent). Otherwise: a filled
+      // node's border is its own fill darkened, an unfilled one takes the
+      // neutral outline. This one choice flows to every shape branch below.
+      let outlined = p.outline != none
+      let fc = if outlined { none } else if p.fill == none { node-fill } else {
+        p.fill
+      }
       let edge = (
         edge-width
-          + if p.fill == none {
+          + if outlined {
+            p.outline
+          } else if p.fill == none {
             node-outline
           } else if type(p.fill) == color {
             p.fill.darken(edge-darken)

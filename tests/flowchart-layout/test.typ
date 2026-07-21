@@ -76,7 +76,7 @@
   node("A", [A]),
   node("L", [L]),
   node("B", [B]),
-  node("R", [R]),
+  node("R", [R], outline: green),
   edge("s", "p1"),
   edge("s", "p2"),
   edge("s", "p3"),
@@ -97,6 +97,9 @@
 // Style carries through the model unchanged; an unset border-color is `none`.
 #assert.eq(g4.groups.find(g => g.id == "inner").border-color, red)
 #assert.eq(g4.groups.find(g => g.id == "outer").border-color, none)
+// A node's `outline` colour carries through model + layout; unset is `none`.
+#assert.eq(cell("R").outline, green)
+#assert.eq(cell("A").outline, none)
 #assert.eq(
   g4.groups.find(g => g.id == "outer").nodes.len(),
   3, // A, B and L — transitive through `inner`
