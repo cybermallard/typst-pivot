@@ -113,6 +113,7 @@
   flowchart-cylinder-cap: 0.16cm, // cylinder cap semi-height; the body grows, the cap never does
   flowchart-edge-width: 0.9pt, // edge line weight
   flowchart-edge-color: luma(40%), // edge line + arrowhead
+  flowchart-bend-radius: 0.15cm, // corner rounding where an edge turns; 0cm for hard right angles
   flowchart-arrow-scale: 1.4, // arrowhead size
   flowchart-edge-label-size: 8.5pt, // branch-label text on an edge
   flowchart-edge-label-color: luma(30%), // branch label

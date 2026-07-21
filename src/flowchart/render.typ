@@ -60,6 +60,7 @@
   let edge-stroke = theme.flowchart-edge-width + theme.flowchart-edge-color
   let line-w = theme.flowchart-edge-width / 1cm // sag tolerance for edge landings
   let arrow-fill = theme.flowchart-edge-color
+  let bend-r = theme.flowchart-bend-radius / 1cm
   let arrow-scale = theme.flowchart-arrow-scale
   let elabel-size = theme.flowchart-edge-label-size
   let elabel-color = theme.flowchart-edge-label-color
@@ -183,6 +184,56 @@
       p => (-p.at(1), -p.at(0))
     } else {
       p => p
+    }
+
+    // Every edge is drawn through here: its canonical points mapped to the
+    // canvas, the polyline stroked with the arrowhead at the tip, and each
+    // interior corner softened to a `bend-r` fillet — the softer look of a
+    // hand-drawn or Mermaid diagram, applied to every edge kind. The fillet
+    // cuts back along both incident segments and curves through the corner
+    // with a quadratic bézier; the cut-back is capped at half of each
+    // adjacent segment, so two neighbouring bends never overrun a short run
+    // between them (and a run too short to round stays a crisp right angle).
+    // Purely a drawing flourish — placement still reasons in sharp polylines,
+    // and the radius is small next to `stub`/`lane-gap`, so labels and
+    // clearances are unaffected. `bend-r: 0` restores hard right angles.
+    let arrowhead = (end: ">", fill: arrow-fill, scale: arrow-scale)
+    let draw-edge = pts => {
+      let m = pts.map(map)
+      if bend-r <= 0 or m.len() < 3 {
+        line(..m, stroke: edge-stroke, mark: arrowhead)
+        return
+      }
+      let seg-len = (a, b) => calc.sqrt(
+        (b.at(0) - a.at(0)) * (b.at(0) - a.at(0))
+          + (b.at(1) - a.at(1)) * (b.at(1) - a.at(1)),
+      )
+      merge-path(stroke: edge-stroke, mark: arrowhead, {
+        let start = m.first()
+        for i in range(1, m.len() - 1) {
+          let (a, p, b) = (m.at(i - 1), m.at(i), m.at(i + 1))
+          let (lin, lout) = (seg-len(a, p), seg-len(p, b))
+          let r = calc.min(bend-r, lin / 2, lout / 2)
+          if r < 1e-4 {
+            // A degenerate or too-short corner stays sharp.
+            line(start, p)
+            start = p
+          } else {
+            let cin = (
+              p.at(0) - r * (p.at(0) - a.at(0)) / lin,
+              p.at(1) - r * (p.at(1) - a.at(1)) / lin,
+            )
+            let cout = (
+              p.at(0) + r * (b.at(0) - p.at(0)) / lout,
+              p.at(1) + r * (b.at(1) - p.at(1)) / lout,
+            )
+            if seg-len(start, cin) > 1e-4 { line(start, cin) }
+            bezier(cin, cout, p)
+            start = cout
+          }
+        }
+        line(start, m.last())
+      })
     }
 
     // A node's outline for its shape, centred at (x, y). Border, as on the timeline
@@ -548,11 +599,7 @@
             }
           }
         }
-        line(
-          ..pts.map(map),
-          stroke: edge-stroke,
-          mark: (end: ">", fill: arrow-fill, scale: arrow-scale),
-        )
+        draw-edge(pts)
         edge-lines += line-boxes(ei, pts)
         if e.label != none {
           labelled.push((
@@ -579,11 +626,7 @@
         let sx = if left { s.x - side-a(s) } else { s.x + side-a(s) }
         let tx = if left { t.x - side-a(t) } else { t.x + side-a(t) }
         let pts = ((sx, s.y), (ch, s.y), (ch, t.y), (tx, t.y))
-        line(
-          ..pts.map(map),
-          stroke: edge-stroke,
-          mark: (end: ">", fill: arrow-fill, scale: arrow-scale),
-        )
+        draw-edge(pts)
         edge-lines += line-boxes(ei, pts)
         if e.label != none {
           labelled.push((
@@ -611,11 +654,7 @@
           (x0 + d, s.y - s.h / 4),
           (x0, s.y - s.h / 4),
         )
-        line(
-          ..pts.map(map),
-          stroke: edge-stroke,
-          mark: (end: ">", fill: arrow-fill, scale: arrow-scale),
-        )
+        draw-edge(pts)
         edge-lines += line-boxes(ei, pts)
         if e.label != none {
           labelled.push((
@@ -654,11 +693,7 @@
           px = j.x
         }
         let pts = head + mids + ((px, ay), (entry.at(0), ay), entry)
-        line(
-          ..pts.map(map),
-          stroke: edge-stroke,
-          mark: (end: ">", fill: arrow-fill, scale: arrow-scale),
-        )
+        draw-edge(pts)
         edge-lines += line-boxes(ei, pts)
         if e.label != none {
           labelled.push((

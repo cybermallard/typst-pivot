@@ -22,6 +22,8 @@ a minor release — each is flagged with a migration note.
 - `flowchart`: edges cross each other far less. A line now prefers the path
   that crosses the fewest others, and the sideways runs sharing the space
   between two rows are stacked in whichever order avoids crossing. 
+- `flowchart`: edge right angles are now curved for a softer look. The radius is
+  `flowchart-bend-radius`; set it to `0cm` for square corners.
 
 ### Added
 
