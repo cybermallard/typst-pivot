@@ -519,6 +519,13 @@
   // Inputs the absolute reach cap has permanently dropped, per node (see the
   // sticky-exclusion note in the widen pass).
   let excl = (:)
+  // Direct children per node, for the near-miss straightening below.
+  let douts = (:)
+  for e in edges {
+    if e.kind == "direct" {
+      douts.insert(str(e.from), douts.at(str(e.from), default: ()) + (e.to,))
+    }
+  }
   for round in range(calc.max(16, ranks + 12)) {
     let ent = (:)
     lastr = (:)
@@ -783,6 +790,69 @@
   // A shear or escape can stretch a box — corridors chosen against the
   // pre-move geometry may then land inside a border, so reroute.
   if rf.moved { lastr = reroute(x, (:)) }
+
+  // Near-miss straightening. The widen loop above never sees the spreads the
+  // group machinery just created — sibling boxes are sheared apart only
+  // here, and a fork's children can end up with their entry spans falling
+  // *just* short of the source's exit face, forcing a small mid-air dogleg
+  // on an otherwise straight drop. When the miss is no more than `node-gap`,
+  // widen the source enough to meet the farther span (the same skew and
+  // reach caps as input widening — a lopsided or distant child still bends),
+  // then re-relax once against the new widths, mirroring the segmented
+  // re-relax below. Decisions keep their pointed fork look, and a child
+  // whose box excludes the source is off limits, as for inputs.
+  {
+    let grew = false
+    for c in cells {
+      if c.shape == "diamond" { continue }
+      let key = str(c.index)
+      let cxn = x.at(key)
+      let sw = w.at(key)
+      let sfh = sw / 2 - calc.min(pad-x, sw / 4)
+      let outs = ()
+      for t in douts.at(key, default: ()) {
+        if boxed-off(c.index, t) { continue }
+        let tk = str(t)
+        let tw = w.at(tk)
+        let tfh = tw / 2 - calc.min(pad-x, tw / 4)
+        let gsep = calc.max(
+          (x.at(tk) - tfh) - (cxn + sfh),
+          (cxn - sfh) - (x.at(tk) + tfh),
+          0,
+        )
+        if gsep > 0.001 and gsep <= node-gap {
+          // Aim a hair inside the child's span, so the landing sits strictly
+          // on the face rather than on its float boundary.
+          outs.push(if x.at(tk) > cxn { x.at(tk) - tfh + 0.02 } else {
+            x.at(tk) + tfh - 0.02
+          })
+        }
+      }
+      if outs.len() == 0 { continue }
+      let lo = calc.min(cxn, ..outs)
+      let hi = calc.max(cxn, ..outs)
+      let reach = calc.min(
+        calc.max(cxn - lo, hi - cxn),
+        calc.min(cxn - lo, hi - cxn) + widen-skew,
+        max-reach,
+      )
+      // The face must hold the exit (`pad-x` inset) AND the exit spread
+      // clamp must reach it — exits sit within 0.7 of the half-width (the
+      // projection factor shared with render's attach), so the width grows
+      // to whichever bound is tighter.
+      let nw = calc.max(sw, 2 * reach + 2 * pad-x, 2 * reach / 0.7)
+      if nw - sw > 0.001 {
+        w.insert(key, nw)
+        grew = true
+      }
+    }
+    if grew {
+      x = relax(w, cwant-last, (:))
+      let rf2 = refine(x, (:))
+      x = rf2.x
+      lastr = reroute(x, (:))
+    }
+  }
 
   // Segmented corridors: a long edge whose endpoints share a box must not
   // route outside it — but its straight corridor can be forced out when no
@@ -1681,10 +1751,13 @@
   // The per-gap allocator: every sideways run sharing an inter-rank band is
   // one "track"; stacked in the wrong order, one track's riser or dropper
   // pierces another's span. Order each band's tracks to minimise those
-  // crossings (fan pairs held fixed), then stack the block centred in the
-  // band at `lane-gap` pitch — the gap was sized above to hold exactly this.
-  // An unsettled ordering (cap hit) keeps every legacy height: degrade,
-  // never fail.
+  // crossings (fan pairs held fixed), then give each track its natural
+  // height — an entry run hugging its target, an exit head hugging its
+  // source — moved only as far as the order, the `lane-gap` pitch, and the
+  // `stub` margins force (a centred stack put every bend at the band's
+  // middle, the most conspicuous spot for a small dogleg). The gap was
+  // sized above to hold the full set. An unsettled ordering (cap hit)
+  // keeps every legacy height: degrade, never fail.
   let tid-of = h => if h.kind == "dseat" {
     "d:" + h.src + ">" + h.tgt
   } else if h.kind == "head" {
@@ -1709,22 +1782,40 @@
       legacy-y: legacy.at(tid-of(h), default: mid),
     ))
     if ts.len() == 1 {
-      alloc-y.insert(ts.first().id, mid)
+      alloc-y.insert(
+        ts.first().id,
+        calc.max(bbot + stub, calc.min(btop - stub, ts.first().legacy-y)),
+      )
     } else if ts.len() >= 2 {
       let cons = fan-pairs.filter(c => (
         ts.any(t => t.id == c.above) and ts.any(t => t.id == c.below)
       ))
-      let res = order-tracks(
-        ts.sorted(key: t => (-t.legacy-y, t.edge)),
-        cons,
-      )
+      let sorted-ts = ts.sorted(key: t => (-t.legacy-y, t.edge))
+      let res = order-tracks(sorted-ts, cons)
       if res.settled {
-        let k = res.order.len()
+        let by-id = (:)
+        for t in ts { by-id.insert(t.id, t) }
+        // Minimal-deviation placement: start each track at its clamped
+        // natural height, then a downward sweep opens the pitch top-to-
+        // bottom and an upward sweep lifts any overflow off the bottom
+        // face — the same forward/backward repair the exit seats use. The
+        // band always fits the full chain (sized above), so both sweeps
+        // stay inside the faces.
+        let want = res.order.map(id => (
+          calc.max(bbot + stub, calc.min(btop - stub, by-id.at(id).legacy-y))
+        ))
+        let k = want.len()
+        for i in range(1, k) {
+          want.at(i) = calc.min(want.at(i), want.at(i - 1) - lane-gap)
+        }
+        want.at(k - 1) = calc.max(want.at(k - 1), bbot + stub)
+        for i in range(k - 2, -1, step: -1) {
+          want.at(i) = calc.max(want.at(i), want.at(i + 1) + lane-gap)
+        }
         for (i, id) in res.order.enumerate() {
-          let yy = mid + ((k - 1) / 2 - i) * lane-gap
           alloc-y.insert(
             id,
-            calc.max(bbot + stub, calc.min(btop - stub, yy)),
+            calc.max(bbot + stub, calc.min(btop - stub, want.at(i))),
           )
         }
       }
