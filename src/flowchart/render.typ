@@ -126,11 +126,29 @@
     ..gr,
     tw: measure(text(size: gtitle-size, gr.title)).width / 1cm,
   ))
+  // Each edge label's extent ALONG the flow axis rides along too (the
+  // knockout occludes the line over that span): its box height in a
+  // vertical flow, its width in a horizontal one. Place grows the gap a
+  // labelled edge crosses so the line stays visible past the label.
+  let elabel-along = (:)
+  for (ei, e) in g.edges.enumerate() {
+    if e.label != none {
+      let m = measure(box(
+        inset: elabel-inset,
+        text(size: elabel-size, e.label),
+      ))
+      elabel-along.insert(
+        str(ei),
+        (if orientation == "horizontal" { m.width } else { m.height }) / 1cm,
+      )
+    }
+  }
   let placed = place(
     sized,
     g.edges,
     g.ranks,
     groups: ggroups,
+    label-along: elabel-along,
     node-gap: node-gap,
     rank-gap: rank-gap,
     pad-x: pad-x,
@@ -211,7 +229,18 @@
     // clearances are unaffected. `bend-r: 0` restores hard right angles.
     let arrowhead = (end: ">", fill: arrow-fill, scale: arrow-scale)
     let draw-edge = pts => {
-      let m = pts.map(map)
+      // Collapse consecutive duplicate points (a side entry's tail bend
+      // coincides with its endpoint): a zero-length final segment would
+      // blunt the arrowhead and confuse the corner fillets.
+      let m0 = pts.map(map)
+      let m = (m0.first(),)
+      for p in m0.slice(1) {
+        if (
+          calc.abs(p.at(0) - m.last().at(0)) > 1e-6
+            or calc.abs(p.at(1) - m.last().at(1)) > 1e-6
+        ) { m.push(p) }
+      }
+      if m.len() < 2 { return }
       if bend-r <= 0 or m.len() < 3 {
         line(..m, stroke: edge-stroke, mark: arrowhead)
         return

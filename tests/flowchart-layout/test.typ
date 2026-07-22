@@ -25,11 +25,12 @@
   ("direct", "direct", "direct", "long", "back"),
 )
 
-// An unanchored node (no direct edges at all) takes its ordering hint from its
-// long-edge partners instead of holding its declared slot: `store`, declared
-// leftmost, orders onto the side of the right-hand chain it feeds.
+// Rank slack: a source holds nothing up, so it sinks to one layer above its
+// nearest consumer instead of being pinned to the top with an edge running
+// the whole height of the chart. `store`, whose only consumer sits at rank
+// 2, comes to rest at rank 1 — and its edge, now a one-rank hop, is direct.
 #let g2 = layout(model((
-  node("store", [S]), // 0 — only a long edge, to the right chain's foot
+  node("store", [S]), // 0 — feeds only the right chain's foot
   node("l0", [L0]), // 1
   node("r0", [R0]), // 2
   node("l1", [L1]),
@@ -40,13 +41,10 @@
   edge("l1", "l2"),
   edge("r0", "r1"),
   edge("r1", "r2"),
-  edge("store", "r2"), // rank 0 -> rank 2: long
+  edge("store", "r2"), // consumer two layers down: store sinks beside it
 )))
-#assert.eq(g2.edges.last().kind, "long")
-#assert(
-  g2.cells.at(0).order > g2.cells.at(1).order,
-  message: "unanchored store was not ordered toward its long partner's side",
-)
+#assert.eq(g2.cells.at(0).rank, 1)
+#assert.eq(g2.edges.last().kind, "direct")
 
 // A self-loop stays out of the ranking graph: it is classified `self` and does
 // not perturb ranks. Without that, the self-loop poisons the node's in-degree,

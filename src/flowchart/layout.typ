@@ -75,13 +75,29 @@
     indeg.insert(str(tv), indeg.at(str(tv)) + 1)
   }
   let rank = range(n).map(_ => 0)
-  let queue = range(n).filter(i => indeg.at(str(i)) == 0)
+  let roots = range(n).filter(i => indeg.at(str(i)) == 0)
+  let queue = roots
   while queue.len() > 0 {
     let u = queue.remove(0)
     for v in succ.at(str(u), default: ()) {
       rank.at(v) = calc.max(rank.at(v), rank.at(u) + 1)
       indeg.insert(str(v), indeg.at(str(v)) - 1)
       if indeg.at(str(v)) == 0 { queue.push(v) }
+    }
+  }
+  // Take up the slack: longest-path ranking pins every source to the top,
+  // even one whose first consumer sits layers below — its edge then runs the
+  // whole height of the chart. A source holds nothing up, so it sinks to one
+  // layer above its nearest consumer (min over children), the way dot and
+  // dagre minimise edge length. Nothing else has slack — every ranked
+  // non-source sits tight against its deepest parent — so one pass over the
+  // sources settles it, and no edge can invert (a source's children keep
+  // their ranks). The top layer never empties: some node has only source
+  // parents, and that node's parents stay put.
+  for i in roots {
+    let cs = succ.at(str(i), default: ())
+    if cs.len() > 0 {
+      rank.at(i) = calc.min(..cs.map(v => rank.at(v))) - 1
     }
   }
   let ranks = calc.max(..rank) + 1

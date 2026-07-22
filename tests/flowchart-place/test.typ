@@ -98,6 +98,8 @@
   for (ei, e) in g.edges.enumerate() {
     if e.kind == "long" {
       let r = p.route.at(str(ei))
+      // A side entry docks at the diamond's vertex, off the face by design.
+      if r.at("side-in", default: false) { continue }
       assert(
         calc.abs(r.entry - p.x.at(str(e.to))) <= face-half(str(e.to)) + slack,
         message: "long entry into node " + str(e.to) + " lands outside it",
@@ -219,40 +221,100 @@
   )
 }
 
+// A labelled line keeps room past its label: the gap a labelled direct edge
+// crosses grows to the label's along-flow extent plus a stub and a half of
+// shaft; an unlabelled gap stays at rank-gap.
+#let lchain-p = place(
+  sizes(chain),
+  chain.edges,
+  chain.ranks,
+  label-along: ("0": 0.9),
+  node-gap: tok.node-gap,
+  rank-gap: tok.rank-gap,
+  pad-x: tok.pad-x,
+  back-margin: tok.back-margin,
+  max-reach: tok.max-reach,
+  widen-skew: tok.widen-skew,
+  edge-clearance: tok.edge-clearance,
+  lane-gap: tok.lane-gap,
+  stub: tok.stub,
+  margin-step: tok.margin-step,
+  group-pad: tok.group-pad,
+  title-room: tok.title-room,
+)
+#assert(
+  calc.abs(
+    (lchain-p.y.at("0") - 0.5)
+      - (lchain-p.y.at("1") + 0.5)
+      - (0.9 + 1.5 * tok.stub),
+  )
+    <= 0.001,
+  message: "labelled gap did not grow for its label",
+)
+#assert(
+  calc.abs(
+    (lchain-p.y.at("1") - 0.5) - (lchain-p.y.at("2") + 0.5) - tok.rank-gap,
+  )
+    <= 0.001,
+  message: "unlabelled gap changed",
+)
+
+// Pin a node back to the top with its edges re-marked long. The rank-slack
+// pass normally sinks a lone feed to sit beside its consumer, so a node
+// whose edges are ALL long can no longer come out of `layout` — but place
+// must still handle one (the abnormal-input contract), so these regressions
+// rebuild that input by hand.
+#let pin-top = (g, id) => {
+  let idx = g.cells.find(c => c.id == id).index
+  let order0 = g.cells.filter(c => c.rank == 0).len()
+  (
+    ..g,
+    cells: g.cells.map(c => if c.index == idx {
+      (..c, rank: 0, order: order0)
+    } else { c }),
+    edges: g.edges.map(e => if (e.from == idx or e.to == idx) {
+      (..e, kind: "long")
+    } else { e }),
+  )
+}
+
 // --- unanchored source: aligns over its corridor ------------------------------
 // The gallery's ransomware shape: `backups` (index 9) has no direct edges, only
 // a long edge deep into the spine. It must chase its corridor to a dead-straight
 // drop — node column == corridor == entry — and move no spine column doing it.
 // Varied widths matter here: the wide mid-rank rows are what force the corridor
 // off the packed position, so uniform sizes would pass vacuously.
-#let ransom = layout(model((
-  node("in", [I]),
-  node("val", [V], shape: "diamond"),
-  node("scope", [S], shape: "parallelogram"),
-  node("fp", [F]),
-  node("spread", [P], shape: "diamond"),
-  node("iso", [N]),
-  node("single", [H]),
-  node("erad", [E]),
-  node("restore", [R]),
-  node("backups", [B], shape: "cylinder"), // 9 — unanchored
-  node("verify", [C], shape: "diamond"),
-  node("out", [O], shape: "rounded"),
-  edge("in", "val"),
-  edge("val", "scope"),
-  edge("val", "fp"),
-  edge("scope", "spread"),
-  edge("spread", "iso"),
-  edge("spread", "single"),
-  edge("iso", "erad"),
-  edge("single", "erad"),
-  edge("erad", "restore"),
-  edge("backups", "restore"), // long: rank 0 -> deep
-  edge("restore", "verify"),
-  edge("verify", "out"),
-  edge("verify", "spread"), // back
-  edge("fp", "out"), // long
-)))
+#let ransom = pin-top(
+  layout(model((
+    node("in", [I]),
+    node("val", [V], shape: "diamond"),
+    node("scope", [S], shape: "parallelogram"),
+    node("fp", [F]),
+    node("spread", [P], shape: "diamond"),
+    node("iso", [N]),
+    node("single", [H]),
+    node("erad", [E]),
+    node("restore", [R]),
+    node("backups", [B], shape: "cylinder"), // 9 — unanchored
+    node("verify", [C], shape: "diamond"),
+    node("out", [O], shape: "rounded"),
+    edge("in", "val"),
+    edge("val", "scope"),
+    edge("val", "fp"),
+    edge("scope", "spread"),
+    edge("spread", "iso"),
+    edge("spread", "single"),
+    edge("iso", "erad"),
+    edge("single", "erad"),
+    edge("erad", "restore"),
+    edge("backups", "restore"), // long: rank 0 -> deep
+    edge("restore", "verify"),
+    edge("verify", "out"),
+    edge("verify", "spread"), // back
+    edge("fp", "out"), // long
+  ))),
+  "backups",
+)
 #let ransom-w = (
   "0": 3.9,
   "1": 4.7,
@@ -317,30 +379,34 @@
 // Two targets widening toward one shared column between them push each other
 // apart forever, so a several-edged feed neither chases nor reorders — it holds
 // its declared slot and its edges jog as usual. The placement must settle.
-#let feed = layout(model((
-  node("u", [U]), // 0 — unanchored, feeds both chains mid-way
-  node("a0", [A0]),
-  node("a1", [A1]),
-  node("a2", [A2]),
-  node("a3", [A3]),
-  node("b0", [B0]),
-  node("b1", [B1]),
-  node("b2", [B2]),
-  node("b3", [B3]),
-  edge("a0", "a1"),
-  edge("a1", "a2"),
-  edge("a2", "a3"),
-  edge("b0", "b1"),
-  edge("b1", "b2"),
-  edge("b2", "b3"),
-  edge("u", "a2"), // long
-  edge("u", "b2"), // long
-)))
+#let feed = pin-top(
+  layout(model((
+    node("u", [U]), // 0 — unanchored, feeds both chains mid-way
+    node("a0", [A0]),
+    node("a1", [A1]),
+    node("a2", [A2]),
+    node("a3", [A3]),
+    node("b0", [B0]),
+    node("b1", [B1]),
+    node("b2", [B2]),
+    node("b3", [B3]),
+    edge("a0", "a1"),
+    edge("a1", "a2"),
+    edge("a2", "a3"),
+    edge("b0", "b1"),
+    edge("b1", "b2"),
+    edge("b2", "b3"),
+    edge("u", "a2"), // long
+    edge("u", "b2"), // long
+  ))),
+  "u",
+)
 #let feed-p = placed(feed)
 #assert(feed-p.settled, message: "feed: widen loop did not settle")
 #check-seats(feed, feed-p)
-// No reordering for a several-edged feed: it holds its declared slot.
-#assert.eq(feed.cells.at(0).order, 0)
+// No reordering for a several-edged feed: it holds its pinned slot (appended
+// after the two rank-0 chain heads by pin-top).
+#assert.eq(feed.cells.at(0).order, 2)
 
 // --- dense fan-in: every arrow gets its own seat and lane ---------------------
 // A SIEM-shaped sink: three direct parents plus two long feeds. All five
@@ -829,21 +895,42 @@
 // in the box. The hull must wrap members with pad to spare, the parent must
 // wrap the child, the outsider must be pushed clear, and the corridor must
 // route around the band.
-#let grouped = layout(model((
-  node("a", [A]),
-  node("f", [F]),
-  node("e", [E]),
-  node("b", [B]),
-  node("c", [C]),
-  node("d", [D]),
-  edge("a", "b"),
-  edge("f", "c"),
-  edge("b", "d"),
-  edge("c", "d"),
-  edge("e", "d"),
-  group("inner", [In], "a", "b"),
-  group("outer", [Out], "inner", "f"),
-)))
+
+// The unconditional invariant every grouped shape must keep: no two
+// rank-mates ever overlap, whatever the push-out negotiated.
+#let no-overlap = (g, p) => {
+  for r in range(g.ranks) {
+    let row = g.cells.filter(c => c.rank == r)
+    for i in range(row.len()) {
+      for j in range(i + 1, row.len()) {
+        let (a, b) = (row.at(i), row.at(j))
+        assert(
+          calc.abs(p.x.at(str(a.index)) - p.x.at(str(b.index)))
+            >= (p.w.at(str(a.index)) + p.w.at(str(b.index))) / 2 - 0.01,
+          message: "nodes " + a.id + " and " + b.id + " overlap",
+        )
+      }
+    }
+  }
+}
+#let grouped = pin-top(
+  layout(model((
+    node("a", [A]),
+    node("f", [F]),
+    node("e", [E]),
+    node("b", [B]),
+    node("c", [C]),
+    node("d", [D]),
+    edge("a", "b"),
+    edge("f", "c"),
+    edge("b", "d"),
+    edge("c", "d"),
+    edge("e", "d"), // long once e is pinned back to the top
+    group("inner", [In], "a", "b"),
+    group("outer", [Out], "inner", "f"),
+  ))),
+  "e",
+)
 #let grouped-p = place(
   sizes(grouped),
   grouped.edges,
@@ -867,6 +954,7 @@
   title-room: tok.title-room,
 )
 #assert(grouped-p.settled, message: "grouped graph did not settle")
+#no-overlap(grouped, grouped-p)
 #let ih = grouped-p.hulls.at("inner")
 #let oh = grouped-p.hulls.at("outer")
 // a(0) and b(3) sit inside the inner hull with the pad to spare.
@@ -953,6 +1041,129 @@
   sib-p.hulls.at("B").x0 - sib-p.hulls.at("A").x1 >= tok.group-pad - 0.01,
   message: "sibling boxes touch",
 )
+#no-overlap(sib, sib-p)
+
+// --- rank-spanning group: the far member is pulled home ------------------------
+// The RBVM shape: enr's members ti/epss sit a rank above cmdb while the
+// non-member diamond (norm) shares ti/epss's rank and feeds cmdb. (A `gov`
+// root pins ti/epss there — without it the slack pass would sink them to
+// cmdb's own rank and dissolve the very pathology under test.) Left alone,
+// the far member chases its parent's column, the band stretches over half
+// the diagram, and the push-out herds the excluded nodes into each other —
+// the overlap this file's no-overlap invariant now pins down. The cohesion
+// recovery must pull the far member under its group-mates instead: nothing
+// overlaps, the interleaved outsider sits clear, and the member stays in.
+#let span = layout(model((
+  node("easm", [A]),
+  node("cspm", [B]),
+  node("vmscan", [C]),
+  node("ctem", [D]),
+  node("ti", [T]),
+  node("epss", [E]),
+  node("norm", [N], shape: "diamond"),
+  node("cmdb", [M], shape: "cylinder"),
+  node("rbvm", [R], shape: "diamond"),
+  node("score", [S]),
+  node("gov", [G]), // 10 — rank-pins ti/epss above cmdb
+  edge("easm", "norm"),
+  edge("cspm", "norm"),
+  edge("vmscan", "norm"),
+  edge("ctem", "norm"),
+  edge("norm", "cmdb"),
+  edge("norm", "rbvm"),
+  edge("ti", "rbvm"),
+  edge("epss", "rbvm"),
+  edge("cmdb", "rbvm"),
+  edge("rbvm", "score"),
+  edge("gov", "ti"),
+  edge("gov", "epss"),
+  group("tel", [Tel], "easm", "cspm", "vmscan", "ctem"),
+  group("enr", [Enr], "ti", "epss", "cmdb"),
+)))
+// The premise itself: the box really does span ranks with norm interleaved.
+#assert.eq(span.cells.at(4).rank, 1)
+#assert.eq(span.cells.at(7).rank, 2)
+#assert.eq(span.cells.at(6).rank, 1)
+#let span-p = place(
+  sizes(span),
+  span.edges,
+  span.ranks,
+  groups: span.groups,
+  node-gap: tok.node-gap,
+  rank-gap: tok.rank-gap,
+  pad-x: tok.pad-x,
+  back-margin: tok.back-margin,
+  max-reach: tok.max-reach,
+  widen-skew: tok.widen-skew,
+  edge-clearance: tok.edge-clearance,
+  lane-gap: tok.lane-gap,
+  stub: tok.stub,
+  margin-step: tok.margin-step,
+  group-pad: tok.group-pad,
+  title-room: tok.title-room,
+)
+#no-overlap(span, span-p)
+// The far member (cmdb, 7) stays inside its box…
+#let eh = span-p.hulls.at("enr")
+#assert(
+  span-p.x.at("7") - span-p.w.at("7") / 2 >= eh.x0 - 0.01
+    and span-p.x.at("7") + span-p.w.at("7") / 2 <= eh.x1 + 0.01,
+  message: "rank-spanning member left its box",
+)
+// The long norm->rbvm edge (index 5) arrives at the rbvm diamond (8) from
+// beyond its face, so it docks at the side vertex: mid-height, entry on the
+// point itself.
+#let sv = span-p.route.at("5")
+#assert(sv.at("side-in", default: false), message: "vulns edge not side-in")
+#assert(
+  calc.abs(calc.abs(sv.entry - span-p.x.at("8")) - span-p.w.at("8") / 2)
+    <= 0.01,
+  message: "side entry not on the diamond's vertex",
+)
+#assert.eq(sv.ay, span-p.y.at("8"))
+
+// A vertex is never shared: whatever combination of side entries, side
+// exits and top seats a diamond ends up with, no two of its long routes
+// may meet the same flank point. Checked across every diamond in the span
+// shape (norm side-exits and rbvm side-enters here).
+#for c in span.cells.filter(c => c.shape == "diamond") {
+  let k = str(c.index)
+  let flanks = ()
+  for (ei, e) in span.edges.enumerate() {
+    if e.kind != "long" or str(ei) not in span-p.route { continue }
+    let r = span-p.route.at(str(ei))
+    if str(e.to) == k and r.at("side-in", default: false) {
+      flanks.push(if r.entry > span-p.x.at(k) { "r" } else { "l" })
+    }
+    if str(e.from) == k and r.side-ok {
+      flanks.push(if r.cx > span-p.x.at(k) { "r" } else { "l" })
+    }
+  }
+  for i in range(flanks.len()) {
+    for j in range(i + 1, flanks.len()) {
+      assert(
+        flanks.at(i) != flanks.at(j),
+        message: "two long routes share diamond "
+          + c.id
+          + "'s "
+          + flanks.at(i)
+          + " vertex",
+      )
+    }
+  }
+}
+
+// …and every non-member whose rank the box spans sits clear of it — norm
+// (6) is the interleaved one the pathology is built on. (The telemetry
+// sources sit at rank 0, above the box's span, so no exclusion binds them.)
+#for i in ("6",) {
+  let ha = span-p.w.at(i) / 2
+  assert(
+    span-p.x.at(i) - ha >= eh.x1 + tok.group-pad - 0.01
+      or span-p.x.at(i) + ha <= eh.x0 - tok.group-pad + 0.01,
+    message: "outsider " + i + " inside the rank-spanning box",
+  )
+}
 
 // A corridor prefers a clear channel *between* row-mates over fleeing to the
 // row's far edge: the source and target columns are blocked by m, but a wide

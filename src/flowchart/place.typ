@@ -25,6 +25,11 @@
   edges,
   ranks,
   groups: (),
+  // Per-edge label extent along the flow axis (dict str(edge index) ->
+  // canvas units), measured by the renderer. Optional: a caller without
+  // measurements gets today's gaps; with them, a gap grows to keep a
+  // labelled line visible past its label.
+  label-along: (:),
   node-gap: none,
   rank-gap: none,
   pad-x: none,
@@ -300,12 +305,16 @@
         let row = order-in-rank.at(r)
         let k = row.len()
         if k == 0 { continue }
+        // A wanted column wins over the neighbour median: for the unanchored
+        // nodes the settle loop pins there is no median anyway, and the
+        // cohesion recovery uses the same door to pull a stray group member
+        // home against its outside parents' tug.
         let want = row.map(a => {
           let ns = nbr.at(str(a), default: ())
-          if ns.len() > 0 { median(ns.map(nn => x.at(str(nn)))) } else if (
-            str(a) in cwant
-          ) {
+          if str(a) in cwant {
             cwant.at(str(a))
+          } else if ns.len() > 0 {
+            median(ns.map(nn => x.at(str(nn))))
           } else {
             x.at(str(a))
           }
@@ -720,7 +729,15 @@
       })
       let half = a => w.at(str(a)) / 2 + mof.at(str(a))
       for r in range(ranks) {
-        let esc = () // landings already escaped to in this rank: (c, h)
+        // Every rank-mate is an obstacle — stationary neighbours as much as
+        // earlier escapees (avoiding only the latter let an escapee land
+        // squarely ON a neighbour that never moved). Keyed so a node ignores
+        // its own entry while being placed; its landing updates the entry
+        // for everyone after it.
+        let occ = (:)
+        for a in order-in-rank.at(r) {
+          occ.insert(str(a), (c: x.at(str(a)), h: half(a)))
+        }
         for a in order-in-rank.at(r) {
           let mine = bands
             .filter(b => (
@@ -748,25 +765,37 @@
               let dr = (m.at(1) + ha) - x.at(str(a))
               let dir = if dl <= dr { -1 } else { 1 }
               let c = if dir < 0 { m.at(0) - ha } else { m.at(1) + ha }
-              // Step past already-escaped rank-mates. The collision test
-              // leaves an epsilon of tolerance: a landing computed as exactly
-              // the separation can round a hair short and re-collide with
-              // itself forever. Bounded as a belt — progress is monotone, so
-              // the cap never binds on real input.
+              // Step past every rank-mate in the way — and past any further
+              // hostile band a bump lands the node in (stepping past a
+              // stationary member of the next box would otherwise strand the
+              // node inside it). The collision tests leave an epsilon of
+              // tolerance: a landing computed as exactly the separation can
+              // round a hair short and re-collide with itself forever.
+              // Bounded as a belt — every bump moves the landing further in
+              // the escape direction, so the cap never binds on real input.
               let bumped = true
               let tries = 0
               while bumped and tries < 32 {
                 bumped = false
                 tries += 1
-                for p in esc {
-                  if calc.abs(c - p.c) < ha + p.h + node-gap - 0.001 {
+                for (k, p) in occ {
+                  if (
+                    k != str(a)
+                      and calc.abs(c - p.c) < ha + p.h + node-gap - 0.001
+                  ) {
                     c = p.c + dir * (p.h + ha + node-gap)
+                    bumped = true
+                  }
+                }
+                for m2 in merged {
+                  if c + ha > m2.at(0) + 0.001 and c - ha < m2.at(1) - 0.001 {
+                    c = if dir < 0 { m2.at(0) - ha } else { m2.at(1) + ha }
                     bumped = true
                   }
                 }
               }
               x.insert(str(a), c)
-              esc.push((c: c, h: ha))
+              occ.insert(str(a), (c: c, h: ha))
               moved = true
               break
             }
@@ -790,6 +819,85 @@
   // A shear or escape can stretch a box — corridors chosen against the
   // pre-move geometry may then land inside a border, so reroute.
   if rf.moved { lastr = reroute(x, (:)) }
+
+  // Cohesion recovery. A group whose members sit on distant ranks with a
+  // non-member step between them can defeat the push-out: the far member
+  // chases its outside parent (the neighbour median), the band stretches
+  // across the diagram, and every excluded node is herded into whatever
+  // ground remains — sometimes none. When the dust settles wrong — an
+  // overlap, or a non-member still inside a hostile band — pull the stray
+  // members home instead: pin each member of an offending group whose
+  // direct neighbours all lie outside it to the mean of the group's other
+  // members, and relax once against the pins. The band collapses to a
+  // column, the excluded nodes are naturally clear, and the member's edges
+  // bend into the box like any other entry. One bounded pass, mirroring
+  // the segmented and near-miss recoveries below.
+  {
+    let half2 = a => w.at(str(a)) / 2
+    let offending = live-groups.filter(g => {
+      let rs = g.nodes.map(a => rankof.at(str(a)))
+      let (gt, gb) = (calc.min(..rs), calc.max(..rs))
+      let b = gband(g, x, w, (:))
+      cells.any(c => (
+        c.rank >= gt
+          and c.rank <= gb
+          and not gp.at(str(c.index), default: ()).contains(g.id)
+          and x.at(str(c.index)) + half2(c.index) > b.lo - group-pad + 0.01
+          and x.at(str(c.index)) - half2(c.index) < b.hi + group-pad - 0.01
+      ))
+    })
+    if offending.len() > 0 {
+      let pins = (:)
+      for g in offending {
+        for m in g.nodes {
+          let ns = nbr.at(str(m), default: ())
+          if (
+            ns.len() > 0
+              and ns.all(n => not gp.at(str(n), default: ()).contains(g.id))
+          ) {
+            let others = g.nodes.filter(o => o != m)
+            if others.len() > 0 {
+              pins.insert(
+                str(m),
+                others.map(o => x.at(str(o))).sum() / others.len(),
+              )
+            }
+          }
+        }
+      }
+      if pins.len() > 0 {
+        x = relax(w, cwant-last + pins, (:))
+        // Phase two: a node fed ONLY by pinned members would follow the
+        // box's column and drag its whole continuation sideways — and the
+        // box sits wherever the rank order parked it, which is no place to
+        // hang the rest of the flow. Hang such a node under its nearest
+        // upstream feeder instead — the flow's own step; the box and the
+        // other far-off context feeds reach it by edge, not by pull.
+        // Anchors are read from the settled phase-one positions, then one
+        // more relax places everything below along the same course.
+        for c2 in cells {
+          let k2 = str(c2.index)
+          if k2 in pins { continue }
+          if offending.any(g => gp.at(k2, default: ()).contains(g.id)) {
+            continue
+          }
+          let dsrc = din.at(k2, default: ())
+          let lsrc = lin.at(k2, default: ()).map(it => it.from)
+          if (
+            dsrc.len() > 0 and dsrc.all(s => str(s) in pins) and lsrc.len() > 0
+          ) {
+            let top2 = calc.max(..lsrc.map(s => rankof.at(str(s))))
+            let near = lsrc.filter(s => rankof.at(str(s)) == top2)
+            pins.insert(k2, median(near.map(s => x.at(str(s)))))
+          }
+        }
+        x = relax(w, cwant-last + pins, (:))
+        let rf2 = refine(x, (:))
+        x = rf2.x
+        lastr = reroute(x, (:))
+      }
+    }
+  }
 
   // Near-miss straightening. The widen loop above never sees the spreads the
   // group machinery just created — sibling boxes are sheared apart only
@@ -999,6 +1107,37 @@
     lastr = reroute(x, chan)
     sp = seg-pass(x, lastr, chan)
   }
+
+  // The invariant of last resort: whatever the passes above negotiated,
+  // two nodes never overlap. Walk each rank in order and open any
+  // overlapping pair to a full node-gap with a rigid rightward shift (the
+  // shear's style — order preserved, internal layout intact). This never
+  // fires on a layout the machinery resolved; when it does fire, band
+  // purity may suffer there — a box edge through a crowd beats nodes drawn
+  // on top of each other.
+  {
+    let pushed = false
+    for r in range(ranks) {
+      // Walk the rank in *current* x order, not the layout order — a
+      // legitimate escape may have leapfrogged a neighbour, and treating
+      // the stale order as geometry would "repair" a pair that never
+      // overlapped.
+      let row = order-in-rank.at(r).sorted(key: a => (x.at(str(a)), a))
+      for i in range(calc.max(row.len() - 1, 0)) {
+        let (a, b) = (row.at(i), row.at(i + 1))
+        let minsep = w.at(str(a)) / 2 + w.at(str(b)) / 2
+        let gap2 = x.at(str(b)) - x.at(str(a))
+        if gap2 < minsep - 0.01 {
+          x.insert(str(b), x.at(str(a)) + minsep + node-gap)
+          pushed = true
+        }
+      }
+    }
+    if pushed {
+      lastr = reroute(x, chan)
+      sp = seg-pass(x, lastr, chan)
+    }
+  }
   for (ei, s) in sp.seg {
     lastr.insert(ei, (
       ..lastr.at(ei),
@@ -1171,11 +1310,68 @@
       for p in px.filter(p => p.x < face-lo or p.x > face-hi) {
         benders.push((kind: "direct", key: str(p.s), cx: p.x))
       }
+      // A long edge arriving from beyond a decision's face may dock at the
+      // diamond's side point instead of bending across the approach band —
+      // the mirror of the diamond side exit. Eligible when the run at the
+      // target's mid-height from corridor to vertex clears the target's
+      // rank-mates, the flank's point is free (one entry per side, farthest
+      // corridor first), and the target has no back edge — those dock at
+      // the flanks too. A seated straight drop stays a top entry: it is
+      // already the ideal line.
+      let sides = ()
+      let side-eis = (:)
+      if (
+        c.shape == "diamond"
+          and not edges.any(e2 => (
+            e2.kind == "back" and (e2.from == c.index or e2.to == c.index)
+          ))
+      ) {
+        // A flank already spoken for stays spoken for: the diamond's own
+        // side exits leave by these points, and a self-loop hangs off the
+        // right one.
+        let flank-used = (l: false, r: false)
+        for (ei2, e2) in edges.enumerate() {
+          if e2.kind == "self" and e2.from == c.index { flank-used.r = true }
+          if (
+            e2.kind == "long"
+              and e2.from == c.index
+              and str(ei2) in lr
+              and lr.at(str(ei2)).side-ok
+          ) {
+            if lr.at(str(ei2)).cx > tx { flank-used.r = true } else {
+              flank-used.l = true
+            }
+          }
+        }
+        for e in ins
+          .map(it => (it: it, r: lr.at(str(it.ei))))
+          .sorted(key: e => -calc.abs(e.r.at("last", default: e.r.cx) - tx)) {
+          if "cols" in e.r { continue }
+          let rcx = e.r.at("last", default: e.r.cx)
+          if rcx >= face-lo and rcx <= face-hi { continue }
+          let right = rcx > tx
+          if (if right { flank-used.r } else { flank-used.l }) { continue }
+          let vx = if right { tx + tw / 2 } else { tx - tw / 2 }
+          let (lo2, hi2) = (calc.min(vx, rcx), calc.max(vx, rcx))
+          let clear2 = order-in-rank
+            .at(c.rank)
+            .filter(a => a != c.index)
+            .all(a => (
+              x.at(str(a)) + w.at(str(a)) / 2 + mof.at(str(a)) <= lo2
+                or x.at(str(a)) - w.at(str(a)) / 2 - mof.at(str(a)) >= hi2
+            ))
+          if not clear2 { continue }
+          if right { flank-used.r = true } else { flank-used.l = true }
+          sides.push((ei: e.it.ei, r: e.r, vx: vx))
+          side-eis.insert(str(e.it.ei), true)
+        }
+      }
       // A segmented route approaches on its *last* column; a straight one on
       // its single corridor column (last == cx there).
       for e in ins
         .map(it => (it: it, r: lr.at(str(it.ei))))
         .sorted(key: e => -calc.abs(e.r.at("last", default: e.r.cx) - tx)) {
+        if str(e.it.ei) in side-eis { continue }
         let rcx = e.r.at("last", default: e.r.cx)
         let seated = rcx >= face-lo and rcx <= face-hi and free(rcx, taken)
         if seated {
@@ -1237,6 +1433,7 @@
         tx: tx,
         seated: seated-longs,
         benders: seated-benders,
+        sides: sides,
       ))
     }
     allocs
@@ -1260,8 +1457,12 @@
     let dseat-x = (:)
     let lseat-x = (:)
     let lseated = (:)
+    let lside = (:)
     for a in allocs {
       for s2 in a.seated { lseated.insert(str(s2.ei), true) }
+      for s2 in a.at("sides", default: ()) {
+        lside.insert(str(s2.ei), s2.vx)
+      }
       for b in a.benders {
         if b.kind == "direct" {
           dseat-x.insert(b.key + ">" + a.key, b.seat)
@@ -1382,7 +1583,25 @@
             }
           }
         }
-        if calc.abs(entry - clast) < 0.01 {
+        if str(ei) in lside {
+          // A side entry runs across the target's own row at mid-height —
+          // fixed, like the diamond side exit's run — and its corridor
+          // passes the whole final gap on the way down.
+          let vx = lside.at(str(ei))
+          hs.push((
+            edge: ei,
+            kind: "side",
+            level: 2 * vr,
+            x0: calc.min(vx, clast),
+            x1: calc.max(vx, clast),
+            ux: none,
+            dx: clast,
+            fixed: true,
+            src: sk,
+            tgt: tk,
+          ))
+          vs.push((edge: ei, x: clast, level: 2 * vr - 1))
+        } else if calc.abs(entry - clast) < 0.01 {
           vs.push((edge: ei, x: clast, level: 2 * vr - 1))
         } else {
           hs.push((
@@ -1421,9 +1640,18 @@
   // two rounds of strict-improvement choices.
   for sweep in range(2) {
     let inv = edge-plan(x, w, lastr, dexit, allocs)
+    // Side entries are flank-anchored — the face-entry model below doesn't
+    // apply to them, so they are pinned like side exits and segments.
+    let side-in = (:)
+    for a in allocs {
+      for s2 in a.at("sides", default: ()) {
+        side-in.insert(str(s2.ei), true)
+      }
+    }
     let changed = false
     for (ei, e) in edges.enumerate() {
       if e.kind != "long" or str(ei) not in lastr { continue }
+      if str(ei) in side-in { continue }
       let r = lastr.at(str(ei))
       if r.side-ok or "cols" in r { continue }
       let (sk, tk) = (str(e.from), str(e.to))
@@ -1602,6 +1830,21 @@
       2 * stub + calc.max(0, gap-tracks(r).len() - 1) * lane-gap,
     )
   })
+  // A labelled line must stay visible past its label: a tall label on a
+  // short run otherwise swallows it, leaving just the arrowhead poking out
+  // (the label solver's keep-outs can't conjure room that isn't there). The
+  // gap a labelled direct edge crosses grows to hold the label plus a full
+  // `stub` of shaft on the arrowhead side and half of one on the other.
+  // Long edges' labels sit on their corridors, which are long by nature.
+  for (ei, e) in edges.enumerate() {
+    if e.kind == "direct" and str(ei) in label-along {
+      let gr2 = calc.max(rankof.at(str(e.from)), rankof.at(str(e.to)))
+      gaps.at(gr2) = calc.max(
+        gaps.at(gr2),
+        label-along.at(str(ei)) + 1.5 * stub,
+      )
+    }
+  }
   // Group borders need vertical room too: the gap above a box's top rank
   // holds its title band and padding, the gap below its bottom rank its
   // padding. Nested boxes opening (or closing) at the same rank each add
@@ -1687,6 +1930,17 @@
         ..fr,
         entry: fr.at("last", default: fr.cx),
         ay: top + gaps.at(a.rank) / 2,
+      ))
+    }
+    // A side entry docks at the diamond's vertex: the corridor drops to the
+    // target's mid-height and runs straight into the point — render's
+    // ordinary tail, fed a mid-height `ay` and the vertex as `entry`.
+    for s in a.at("sides", default: ()) {
+      route.insert(str(s.ei), (
+        ..lastr.at(str(s.ei)),
+        entry: s.vx,
+        ay: y.at(a.key),
+        side-in: true,
       ))
     }
     for side in (-1, 1) {

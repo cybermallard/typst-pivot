@@ -24,6 +24,14 @@ a minor release — each is flagged with a migration note.
   between two rows are stacked in whichever order avoids crossing. 
 - `flowchart`: edge right angles are now curved for a softer look. The radius is
   `flowchart-bend-radius`; set it to `0cm` for square corners.
+- `flowchart`: a feed or store whose first consumer sits several layers down
+  no longer perches at the top of the chart with its line running the whole
+  height. It now sits one layer above its nearest consumer, next to the flow
+  it joins — short lines instead of page-length ones.
+- `flowchart`: a long line arriving at a diamond from the side now enters
+  at the diamond's side point.
+- `flowchart`: a tall label on a short line could swallow it, leaving just
+  the arrowhead poking out. Line lengthened to  avoid htis.
 
 ### Added
 
