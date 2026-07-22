@@ -1393,6 +1393,50 @@
   }
 }
 
+// --- outside corridors clear a busy boundary node ------------------------------
+// A degree-3 node inflates its clearance band by `margin-step`, and one that
+// also defines the diagram's edge used to push that band past the outside
+// fallback columns, which were sized from the unmargined extent and silently
+// filtered out. Pin the promise the candidate list makes: the long route's
+// corridor — wherever the sort lands it — clears every crossed node's
+// *margined* band, boundary hubs included. Both middle ranks here carry a
+// degree-3 node (f, b), so the hub sits at the boundary whichever side the
+// ordering picks.
+#let fatb = layout(model((
+  node("s", [S]),
+  node("g0", [G]),
+  node("a", [A]),
+  node("f", [F]),
+  node("b", [B]),
+  node("c", [C]),
+  node("t", [T]),
+  edge("s", "a"),
+  edge("s", "t"), // rank 0 -> 3: long, crossing both hub ranks
+  edge("g0", "f"),
+  edge("f", "b"),
+  edge("f", "c"),
+  edge("a", "b"),
+  edge("b", "t"),
+  edge("c", "t"),
+)))
+#assert.eq(fatb.edges.at(1).kind, "long")
+#let fatb-p = placed(fatb)
+#check-seats(fatb, fatb-p)
+#let fatb-mof = k => {
+  let d = fatb.edges.filter(e => str(e.from) == k or str(e.to) == k).len()
+  tok.margin-step * calc.max(0, d - 2)
+}
+#let fatb-cx = fatb-p.route.at("1").cx
+// Crossed ranks 1 and 2: a=2, f=3, b=4, c=5 (cells are 3.0 wide).
+#for k in ("2", "3", "4", "5") {
+  let hb = 3.0 / 2 + fatb-mof(k) + tok.edge-clearance
+  assert(
+    fatb-cx <= fatb-p.x.at(k) - hb + 0.01
+      or fatb-cx >= fatb-p.x.at(k) + hb - 0.01,
+    message: "long corridor runs inside node " + k + "'s margined band",
+  )
+}
+
 // --- label-spots: the pure collision solver ------------------------------------
 // A free run keeps its midpoint exactly (no churn for sparse diagrams).
 #let one = label-spots(

@@ -354,12 +354,16 @@
   // blocks, ordered closest to the source's own column so the edge drops
   // straight when that column is clear (and only jogs when it isn't).
   // Candidates are the endpoints (or, for a side exit, the source's flanks),
-  // the gaps just outside each crossed rank, and just outside the diagram —
-  // the last is always clear, so a corridor always exists. With `side-exit`
-  // (a decision leaving by a side vertex) the corridor must sit outside the
-  // source, its run at u.y clear of u's rank-mates; the list is empty if none
-  // does (caller falls back to a bottom exit). The crossing sweep re-scores
-  // this same list later, so anything it picks satisfies the same clearances.
+  // the gaps just outside each crossed rank, and just outside the diagram.
+  // The outside pair stands beyond every node's *margined* clearance band
+  // (footprint + `mof` + stand-off), so no node can block it; only a group's
+  // border can cover it, and the border-lane candidates below keep a column
+  // findable there. Together the list always holds a workable column for a
+  // plain drop. With `side-exit` (a decision leaving by a side vertex) the
+  // corridor must sit outside the source, its run at u.y clear of u's
+  // rank-mates; the list is empty if none does (caller falls back to a
+  // bottom exit). The crossing sweep re-scores this same list later, so
+  // anything it picks satisfies the same clearances.
   let corridor-cands = (ui, vi, side-exit, prefer-target, x, w, ch) => {
     let ur = rankof.at(str(ui))
     let vr = rankof.at(str(vi))
@@ -369,14 +373,15 @@
     // A routed edge keeps `edge-clearance` from every node it passes, measured
     // from the node's margined footprint — busy hubs hold corridors further off.
     let hw = a => w.at(str(a)) / 2 + mof.at(str(a))
-    let minx = calc.min(..cells.map(c => (
-      x.at(str(c.index)) - w.at(str(c.index)) / 2
-    )))
-    let maxx = calc.max(..cells.map(c => (
-      x.at(str(c.index)) + w.at(str(c.index)) / 2
-    )))
+    // The diagram's extent for the outside fallback columns is the *margined*
+    // footprint, and the stand-off never drops below `edge-clearance` — both
+    // are needed for the outside pair to clear a busy boundary node's band
+    // whatever the theme's back-margin is set to.
+    let minx = calc.min(..cells.map(c => x.at(str(c.index)) - hw(c.index)))
+    let maxx = calc.max(..cells.map(c => x.at(str(c.index)) + hw(c.index)))
+    let out-margin = calc.max(back-margin, edge-clearance)
     let occupied = ()
-    let cands = (vx, minx - back-margin, maxx + back-margin)
+    let cands = (vx, minx - out-margin, maxx + out-margin)
     cands += if side-exit {
       (ux - uw / 2 - edge-clearance, ux + uw / 2 + edge-clearance)
     } else { (ux,) }
@@ -494,9 +499,9 @@
     let cx = if side { corridor(from, to, true, pt, x, w, ch) } else { none }
     let side-ok = cx != none
     if not side-ok { cx = corridor(from, to, false, pt, x, w, ch) }
-    // No candidate at all should be unreachable, but never crash on it:
-    // degrade to a drop at the target's own column and let the shape-aware
-    // attach land the arrow.
+    // Defensive only — the plain candidate list always holds a clear column
+    // (see corridor-cands). Never crash regardless: degrade to a drop at the
+    // target's own column and let the shape-aware attach land the arrow.
     if cx == none {
       cx = x.at(str(to))
       side-ok = false
