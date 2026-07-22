@@ -278,6 +278,27 @@
   )
 }
 
+// --- decisions never widen -----------------------------------------------------
+// The same two-parent merge grows a rectangle to span its inputs but leaves
+// a diamond at its measured width: a decision keeps its pointed proportion
+// and the arrows bend into seats on its slopes instead.
+#let dmw = layout(model((
+  node("p1", [A]),
+  node("p2", [B]),
+  node("q1", [C]),
+  node("q2", [D]),
+  node("dd", [E], shape: "diamond"),
+  node("rr", [F]),
+  edge("p1", "dd"),
+  edge("p2", "dd"),
+  edge("q1", "rr"),
+  edge("q2", "rr"),
+)))
+#let dmw-p = placed(dmw)
+#assert.eq(dmw-p.w.at("4"), 3.0)
+#assert(dmw-p.w.at("5") > 3.0 + 0.01, message: "rect merge failed to widen")
+#check-seats(dmw, dmw-p)
+
 // --- unanchored source: aligns over its corridor ------------------------------
 // The gallery's ransomware shape: `backups` (index 9) has no direct edges, only
 // a long edge deep into the spine. It must chase its corridor to a dead-straight

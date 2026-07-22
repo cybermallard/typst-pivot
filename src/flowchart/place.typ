@@ -594,20 +594,26 @@
       // up to `max-reach`: widths are symmetric about the node's centre, so spanning
       // an input the packing has pushed far off-centre doubles into a page-wide
       // face. A further input must not inflate the node — its edge bends into an
-      // allocated seat instead (see the route pass below).
+      // allocated seat instead (see the route pass below). A decision never
+      // widens at all: a diamond stretched to span its inputs loses its
+      // pointed proportion, so it stays label-sized and every arrow bends
+      // into a seat on its sloped faces or docks at a vertex — the input
+      // side of the same rule its branches follow (see the near-miss pass).
       let cand = (
-        if d.len() >= 2 {
+        if d.len() >= 2 and c.shape != "diamond" {
           d.map(s => (k: "d" + str(s), e: x.at(str(s))))
         } else { () }
       )
       let cand = (
         cand
-          + l.map(it => (
-            k: "l" + str(it.ei),
-            e: ent.at(
-              str(it.ei),
-            ),
-          ))
+          + if c.shape == "diamond" { () } else {
+            l.map(it => (
+              k: "l" + str(it.ei),
+              e: ent.at(
+                str(it.ei),
+              ),
+            ))
+          }
       )
       // The absolute cap is *sticky*: an input it drops stays dropped. Settle
       // wobble otherwise flips borderline inputs in and out of the included

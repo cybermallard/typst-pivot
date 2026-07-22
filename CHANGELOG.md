@@ -32,6 +32,9 @@ a minor release — each is flagged with a migration note.
   at the diamond's side point.
 - `flowchart`: a tall label on a short line could swallow it, leaving just
   the arrowhead poking out. Line lengthened to  avoid htis.
+- `flowchart`: a decision with several arrows in no longer stretches to
+  reach them all. A diamond stays label-sized and the arrows bend in to
+  meet its sloped faces, keeping its pointed proportion.
 
 ### Added
 
