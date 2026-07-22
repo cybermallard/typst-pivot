@@ -87,6 +87,9 @@ a minor release — each is flagged with a migration note.
   its own point on the node, spaced from the rest.
 - `flowchart`: an edge label inside a group box with a `fill:` showed a white
   rectangle behind its text. The label's backing now matches the tint under it.
+- `flowchart`: ensure nodes with many connections get breathing room that edges
+  avoid. A busy node was able to extend its boundry over an adjacent lane, fixed.
+
 
 ## [0.2.0] - 2026-07-05
 
