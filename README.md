@@ -8,7 +8,7 @@
 
 Draw diagrams for Cyber Threat Intelligence (CTI) analysis.
 
-![The five diagram families: a TCP header packet diagram, a malware-triage flowchart, a Gh0st RAT check-in annotated in a hexdump, a malware C2 config as a memory map, and a ransomware intrusion on a snaked timeline.](https://raw.githubusercontent.com/cybermallard/typst-pivot/main/docs/img/hero.png)
+![The five diagram families: a TCP header packet diagram, a malware C2 config as a memory map, a Gh0st RAT check-in annotated in a hexdump, a ransomware intrusion on a snaked timeline, and a risk-based vulnerability-management flowchart with grouped discovery and enrichment stages.](https://raw.githubusercontent.com/cybermallard/typst-pivot/main/docs/img/hero.png)
 
 ## Installation
 
