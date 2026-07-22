@@ -5,7 +5,7 @@
 // edges jog as usual. Third: a sink is never unanchored — its deepest feeder
 // is always a direct edge — so it sits under that feeder and widens to seat
 // the long entries. Bottom: the single-feed alignment survives the transpose.
-#import "@local/pivot:0.2.0": edge, flowchart, node, palette
+#import "@local/pivot:0.3.0": edge, flowchart, node, palette
 
 #set page(width: auto, height: auto, margin: 0.5cm)
 

@@ -3,7 +3,7 @@
 // merges on top of that moved parent. Anchors that the merge terminal spans both
 // incoming columns with its padding to spare — both arrows land inset on the flat
 // top face, never on the rounded corners.
-#import "@local/pivot:0.2.0": edge, flowchart, node, palette
+#import "@local/pivot:0.3.0": edge, flowchart, node, palette
 
 #set page(width: auto, height: auto, margin: 0.5cm)
 

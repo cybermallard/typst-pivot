@@ -2,7 +2,7 @@
 
 <p align="center">
   <a href="https://github.com/cybermallard/typst-pivot/actions/workflows/ci.yml"><img src="https://github.com/cybermallard/typst-pivot/actions/workflows/ci.yml/badge.svg" alt="CI build status"></a>
-  <a href="https://typst.app/universe/package/pivot"><img src="https://img.shields.io/badge/pivot-v0.2.0-239dad?logo=typst&amp;logoColor=239dad" alt="pivot v0.2.0 on Typst Universe"></a>
+  <a href="https://typst.app/universe/package/pivot"><img src="https://img.shields.io/badge/pivot-v0.3.0-239dad?logo=typst&amp;logoColor=239dad" alt="pivot v0.3.0 on Typst Universe"></a>
   <img src="https://img.shields.io/badge/Typst-v0.14%2B-239dad.svg" alt="Typst 0.14+">
 </p>
 
@@ -16,7 +16,7 @@ Import pivot from the preview namespace and the Typst compiler
 fetches it (and CeTZ) on first build. There's no manual install step:
 
 ```typ
-#import "@preview/pivot:0.2.0": packet, struct, hexdump
+#import "@preview/pivot:0.3.0": packet, struct, hexdump
 ```
 
 ## Using pivot
@@ -35,7 +35,7 @@ A **`packet`** — the TCP header, with the sequence and acknowledgment numbers
 highlighted (the narrow flag bits become leader callouts automatically):
 
 ```typ
-#import "@preview/pivot:0.2.0": packet, struct, hexdump, bytes, bits, gap, palette
+#import "@preview/pivot:0.3.0": packet, struct, hexdump, bytes, bits, gap, palette
 
 #packet(
   bytes(2)[Source Port], bytes(2)[Destination Port],
@@ -76,7 +76,7 @@ a simplified attack-lifecycle, so each reads as a block of matching markers impr
 Colour customisable but unfilled by default:
 
 ```typ
-#import "@preview/pivot:0.2.0": timeline, event, palette
+#import "@preview/pivot:0.3.0": timeline, event, palette
 
 #timeline(
   orientation: "snaked",
@@ -90,27 +90,39 @@ Colour customisable but unfilled by default:
 )
 ```
 
-A **`flowchart`** — a malware-triage flow, its outcome actions coloured (red for the
-malicious-path actions, green for benign). Node shape marks the role, and pivot ranks,
-aligns, and routes it:
+A **`flowchart`** — a risk-based vulnerability-management pipeline visualised. Titled
+`group(...)` boxes mark the discovery and enrichment stages, node shape marks the
+role (diamonds decide, the cylinder is a datastore), and colour marks the function.
+Pivot decided the layout, the user described the shape of the data:
 
 ```typ
-#import "@preview/pivot:0.2.0": flowchart, node, edge, palette
+#import "@preview/pivot:0.3.0": flowchart, node, edge, group, palette
 
 #flowchart(
-  node("in", [Suspicious file], shape: "rounded"),
-  node("hash", [Known-bad hash?], shape: "diamond"),
-  node("block", [Block & alert], fill: palette.vermillion),
-  node("det", [Detonate in sandbox], shape: "parallelogram"),
-  node("mal", [Malicious behaviour?], shape: "diamond"),
-  node("ir", [Raise incident], fill: palette.vermillion),
-  node("clear", [Mark benign], fill: palette.green),
-  node("out", [Report], shape: "rounded"),
-  edge("in", "hash"),
-  edge("hash", "block", label: [yes]), edge("hash", "det", label: [no]),
-  edge("det", "mal"),
-  edge("mal", "ir", label: [yes]), edge("mal", "clear", label: [no]),
-  edge("ir", "out"), edge("clear", "out"), edge("block", "out"),
+  node("easm", [EASM: \ External Attack Surface], fill: palette.sky),
+  node("cspm", [CSPM / CNAPP: \ Cloud Posture], fill: palette.sky),
+  node("vmscan", [Traditional \ VM Scanners], fill: palette.sky),
+  node("ctem", [CTEM: \ Internal Attack Paths], fill: palette.sky),
+  node("norm", [Data Normalization \ & Deduplication], shape: "diamond", fill: palette.orange),
+  node("ti", [Threat \ Intelligence], fill: palette.purple),
+  node("epss", [Exploitation \ Rating (EPSS)], fill: palette.purple),
+  node("cmdb", [Asset Database \ & CMDB], shape: "cylinder", fill: palette.green),
+  node("rbvm", [RBVM \ Scoring Engine], shape: "diamond", fill: palette.orange),
+  node("score", [Custom Risk Score], fill: palette.green),
+  node("ticket", [Automated Ticketing \ & Triage Workflow], shape: "rounded", fill: palette.green),
+  edge("easm", "norm", label: [External Vulns \ & Exposures]),
+  edge("cspm", "norm", label: [Cloud Vulns \ & Misconfigs]),
+  edge("vmscan", "norm", label: [Vulnerabilities \ & CVSS]),
+  edge("ctem", "norm", label: [Attack Paths \ & Misconfigs]),
+  edge("norm", "cmdb", label: [Live Overlay \ (Fixes Stale Data)]),
+  edge("norm", "rbvm", label: [Feeds Deduplicated \ Vulns]),
+  edge("ti", "rbvm", label: [Threat Actor \ Context]),
+  edge("epss", "rbvm", label: [Exploitability \ Metrics]),
+  edge("cmdb", "rbvm", label: [Queries Asset \ Context]),
+  edge("rbvm", "score", label: [Calculates \ Priority]),
+  edge("score", "ticket", label: [Triggers \ Safe Routing]),
+  group("telemetry", [Telemetry & Discovery], "easm", "cspm", "vmscan", "ctem"),
+  group("enrich", [Enrichment & Context], "ti", "epss", "cmdb"),
 )
 ```
 
@@ -124,7 +136,7 @@ pivot keeps doing everything else:
 
 ```typ
 // page units — +y is up, +x is right, the same in either orientation
-edge("hash", "block", label: [yes], label-offset: (0pt, 6pt))
+edge("rbvm", "score", label: [Calculates \ Priority], label-offset: (0pt, 6pt))
 ```
 
 Only that label shifts; every node, edge, and other label stays exactly where
@@ -204,8 +216,7 @@ a slightly wider `#set figure(gap: 1em)` reads better:
 
 ## Built on CeTZ
 
-pivot renders with CeTZ, licensed under **LGPL-3.0-or-later**. CeTZ is neither
-vendored nor modified; the Typst compiler fetches it independently at build time.
+pivot renders with CeTZ, licensed under **LGPL-3.0-or-later**. CeTZ is fetched independently at build time.
 
 ## License
 

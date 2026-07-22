@@ -3,7 +3,7 @@
 // heads for `ok`'s far side. It must land clamped on the rounded box's flat top
 // span (then jog), never pointing at the gap beside the curved corner. `sort`
 // itself is anchored by its parent, so the offset survives relaxation.
-#import "@local/pivot:0.2.0": edge, flowchart, node
+#import "@local/pivot:0.3.0": edge, flowchart, node
 
 #set page(width: auto, height: auto, margin: 0.5cm)
 

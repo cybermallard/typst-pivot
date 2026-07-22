@@ -1,4 +1,4 @@
-#import "@local/pivot:0.2.0": bytes, bits, struct
+#import "@local/pivot:0.3.0": bytes, bits, struct
 
 #set page(width: auto, height: auto, margin: 8pt)
 #set text(font: "DejaVu Sans Mono")

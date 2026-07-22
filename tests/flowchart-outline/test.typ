@@ -6,7 +6,7 @@
 // Outline colours are the base Okabe–Ito hues, not `palette.*`: those are
 // lightened for use as fills behind black text, so as outline stroke + text on
 // white they wash out — the base hues keep their contrast as a foreground.
-#import "@local/pivot:0.2.0": edge, flowchart, node, palette
+#import "@local/pivot:0.3.0": edge, flowchart, node, palette
 
 #set page(width: auto, height: auto, margin: 0.5cm)
 

@@ -12,7 +12,7 @@ What happened, vs. what you expected.
 The smallest call that shows it:
 
 ```typ
-#import "@preview/pivot:0.2.0": packet, struct, bytes, bits, gap
+#import "@preview/pivot:0.3.0": packet, struct, bytes, bits, gap
 #packet(
   // ...
 )

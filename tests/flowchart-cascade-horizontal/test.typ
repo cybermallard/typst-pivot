@@ -3,7 +3,7 @@
 // across the flow (the terminal grows tall, arrows land inset on its flat left
 // face). Anchors that the convergence fix and the shape-aware landings survive
 // the horizontal orientation.
-#import "@local/pivot:0.2.0": edge, flowchart, node, palette
+#import "@local/pivot:0.3.0": edge, flowchart, node, palette
 
 #set page(width: auto, height: auto, margin: 0.5cm)
 

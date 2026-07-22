@@ -3,7 +3,7 @@
 // inside and outsiders outside, unrelated lines route around the box, and the
 // three border styles (plus a coloured custom stroke and a tint fill) render.
 // The horizontal chart moves the title band to the final top edge.
-#import "@local/pivot:0.2.0": edge, flowchart, group, node, palette
+#import "@local/pivot:0.3.0": edge, flowchart, group, node, palette
 
 #set page(width: auto, height: auto, margin: 0.5cm)
 

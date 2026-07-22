@@ -1,4 +1,4 @@
-#import "@local/pivot:0.2.0": packet, bits, bytes
+#import "@local/pivot:0.3.0": packet, bits, bytes
 
 #set page(width: auto, height: auto, margin: 0.5cm)
 

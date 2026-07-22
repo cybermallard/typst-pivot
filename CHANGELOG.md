@@ -5,7 +5,7 @@ Notable changes to pivot, following
 [Semantic Versioning](https://semver.org/). Pre-1.0, a breaking change can land in
 a minor release — each is flagged with a migration note.
 
-## [Unreleased]
+## [0.3.0] - 2026-07-22
 
 ### Changed
 
@@ -31,7 +31,7 @@ a minor release — each is flagged with a migration note.
 - `flowchart`: a long line arriving at a diamond from the side now enters
   at the diamond's side point.
 - `flowchart`: a tall label on a short line could swallow it, leaving just
-  the arrowhead poking out. Line lengthened to  avoid htis.
+  the arrowhead poking out. Line lengthened to avoid this.
 - `flowchart`: a decision with several arrows in no longer stretches to
   reach them all. A diamond stays label-sized and the arrows bend in to
   meet its sloped faces, keeping its pointed proportion.
@@ -124,6 +124,6 @@ one field model so they never disagree on where a field starts.
 - **`palette`** — Okabe–Ito colour-blind-safe highlight colours, for `fill:`.
 - Theming via a `theme:` dict; built on `@preview/cetz:0.5.2` (Typst ≥ 0.14).
 
-[Unreleased]: https://github.com/cybermallard/typst-pivot/compare/v0.2.0...HEAD
+[0.3.0]: https://github.com/cybermallard/typst-pivot/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/cybermallard/typst-pivot/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/cybermallard/typst-pivot/releases/tag/v0.1.0

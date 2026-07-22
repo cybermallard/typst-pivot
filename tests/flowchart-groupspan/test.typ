@@ -4,7 +4,7 @@
 // recovery: the far member is pulled under its group-mates so the box stays
 // a narrow column, the excluded nodes sit clear of it, and — the invariant —
 // nothing overlaps.
-#import "@local/pivot:0.2.0": edge, flowchart, group, node, palette
+#import "@local/pivot:0.3.0": edge, flowchart, group, node, palette
 
 #set page(width: auto, height: auto, margin: 0.5cm)
 

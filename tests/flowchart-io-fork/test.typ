@@ -5,7 +5,7 @@
 // off its parent's column by the wide sibling branch — the entry heads for the
 // slanted end of the child's top face and must clamp onto it. Both land on the
 // outline.
-#import "@local/pivot:0.2.0": edge, flowchart, node
+#import "@local/pivot:0.3.0": edge, flowchart, node
 
 #set page(width: auto, height: auto, margin: 0.5cm)
 

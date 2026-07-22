@@ -5,7 +5,7 @@
 // into allocated seats), every arrow into a node has its own spaced seat,
 // jogging corridors take separate lanes at separate approach heights, and
 // edge labels dodge each other, the nodes, and crossing lines.
-#import "@local/pivot:0.2.0": edge, flowchart, node, palette
+#import "@local/pivot:0.3.0": edge, flowchart, node, palette
 
 #set page(width: auto, height: auto, margin: 0.5cm)
 

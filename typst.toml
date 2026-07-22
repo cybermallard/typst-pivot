@@ -1,6 +1,6 @@
 [package]
 name = "pivot"
-version = "0.2.0"
+version = "0.3.0"
 entrypoint = "lib.typ"
 authors = ["cybermallard <cybermallard@ttp.dev>"]
 license = "Apache-2.0"

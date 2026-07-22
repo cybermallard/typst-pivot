@@ -4,7 +4,7 @@
 // while its caps stay fixed, and an unfilled cylinder renders as line-art.
 // Bottom, the same graph horizontal: edges meet the cylinders' straight sides,
 // and the datastores still read as upright databases.
-#import "@local/pivot:0.2.0": edge, flowchart, node, palette
+#import "@local/pivot:0.3.0": edge, flowchart, node, palette
 
 #set page(width: auto, height: auto, margin: 0.5cm)
 
